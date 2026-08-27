@@ -1,0 +1,1 @@
+"""Canonical data models, schemas, persistence, and split helpers."""
