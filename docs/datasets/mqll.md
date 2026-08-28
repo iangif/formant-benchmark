@@ -52,9 +52,17 @@ mkdir -p data/raw/mcqll/ls_eng/gold_tracks data/raw/mcqll/ls_eng/source
 rsync -av USER@oka:/projects/xling-measures/export/gold_tracks/ls_eng/ \
   data/raw/mcqll/ls_eng/gold_tracks/
 
+# To load all batches
 rsync -av --include='*/' --include='*.wav' --exclude='*' \
   USER@oka:/projects/xling-measures/data/ls_eng/ \
   data/raw/mcqll/ls_eng/source/
+
+# To load only a few batches
+rsync -avm --include='/batch1/' --include='/batch2/' \
+  --include='/batch1/**/' --include='/batch2/**/' \
+  --include='/batch1/**.wav' --include='/batch2/**.wav' \
+  --exclude='*' \
+  USER@oka:/projects/xling-measures/data/ls_eng/ data/raw/mcqll/ls_eng/source/  
 ```
 
 Repeat with `gp_jpn` for Japanese. Replace `USER` with your oka username.
