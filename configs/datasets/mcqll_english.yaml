@@ -1,0 +1,7 @@
+adapter: mcqll_formants
+name: mcqll_english
+corpus: ls_eng
+language: english
+gold_root: data/raw/mcqll/ls_eng/gold_tracks
+audio_root: data/raw/mcqll/ls_eng/source
+batches: all

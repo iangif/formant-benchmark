@@ -103,16 +103,26 @@ def load_prepared_dataset(path: str | Path, *, validate: bool = True) -> Prepare
 
 
 def inspect_prepared_dataset(dataset: PreparedDataset) -> dict[str, Any]:
-    """Return a compact programmatic summary suitable for later CLI inspection."""
+    """Return a compact summary of identity, content, and available metadata."""
     interval_counts = (
         dataset.intervals["interval_type"].value_counts(dropna=False).sort_index().to_dict()
         if not dataset.intervals.empty
         else {}
     )
-    split_counts = dataset.splits["split"].value_counts(dropna=False).sort_index().to_dict() if not dataset.splits.empty else {}
+    split_counts = (
+        dataset.splits["split"].value_counts(dropna=False).sort_index().to_dict()
+        if not dataset.splits.empty
+        else {}
+    )
+    batch_counts = (
+        dataset.items["batch"].value_counts(dropna=False).sort_index().to_dict()
+        if "batch" in dataset.items.columns
+        else {}
+    )
     return {
         "name": dataset.manifest.name,
         "source": dataset.manifest.source,
+        "adapter": dataset.manifest.adapter,
         "annotation_type": dataset.manifest.annotation_type.value,
         "available_formants": [formant.value for formant in dataset.manifest.available_formants],
         "fingerprint": dataset.manifest.fingerprint or dataset_fingerprint(dataset),
@@ -120,8 +130,10 @@ def inspect_prepared_dataset(dataset: PreparedDataset) -> dict[str, Any]:
         "n_track_rows": int(len(dataset.tracks)),
         "n_intervals": int(len(dataset.intervals)),
         "n_static_measurements": int(len(dataset.static_measurements)) if dataset.static_measurements is not None else 0,
+        "metadata_columns": [column for column in dataset.items.columns if column not in {"item_id", "audio_path"}],
         "interval_counts": {str(key): int(value) for key, value in interval_counts.items()},
         "split_counts": {str(key): int(value) for key, value in split_counts.items()},
+        "batch_counts": {str(key): int(value) for key, value in batch_counts.items()},
     }
 
 

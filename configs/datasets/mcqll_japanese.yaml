@@ -1,0 +1,7 @@
+adapter: mcqll_formants
+name: mcqll_japanese
+corpus: gp_jpn
+language: japanese
+gold_root: data/raw/mcqll/gp_jpn/gold_tracks
+audio_root: data/raw/mcqll/gp_jpn/source
+batches: all
