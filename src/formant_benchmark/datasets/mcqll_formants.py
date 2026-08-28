@@ -80,80 +80,80 @@ class MCQLLFormantsAdapter(DatasetAdapter):
         except ValidationError as exc:
             raise ConfigurationError(f"Invalid MCQLL dataset configuration: {exc}") from exc
 
-    gold_root = parsed.gold_root.expanduser().resolve()
-    audio_root = parsed.audio_root.expanduser().resolve()
-    batches = _resolve_batches(gold_root, parsed.batches)
+        gold_root = parsed.gold_root.expanduser().resolve()
+        audio_root = parsed.audio_root.expanduser().resolve()
+        batches = _resolve_batches(gold_root, parsed.batches)
 
-    item_frames: list[pd.DataFrame] = []
-    track_frames: list[pd.DataFrame] = []
-    interval_frames: list[pd.DataFrame] = []
-    source_schemas: dict[str, str] = {}
+        item_frames: list[pd.DataFrame] = []
+        track_frames: list[pd.DataFrame] = []
+        interval_frames: list[pd.DataFrame] = []
+        source_schemas: dict[str, str] = {}
 
-    for batch in batches:
-        batch_root = gold_root / batch
-        _require_export_files(batch_root)
-        manifest = _load_export_manifest(batch_root / "export_manifest.json", parsed.corpus, batch)
-        source_schemas[batch] = str(manifest.get("schema", "unknown"))
+        for batch in batches:
+            batch_root = gold_root / batch
+            _require_export_files(batch_root)
+            manifest = _load_export_manifest(batch_root / "export_manifest.json", parsed.corpus, batch)
+            source_schemas[batch] = str(manifest.get("schema", "unknown"))
 
-        tokens = pd.read_parquet(batch_root / "tokens.parquet")
-        tracks = pd.read_parquet(batch_root / "tracks.parquet")
-        items, normalized_tracks, intervals = _prepare_batch(
-            tokens=tokens,
+            tokens = pd.read_parquet(batch_root / "tokens.parquet")
+            tracks = pd.read_parquet(batch_root / "tracks.parquet")
+            items, normalized_tracks, intervals = _prepare_batch(
+                tokens=tokens,
+                tracks=tracks,
+                corpus=parsed.corpus,
+                language=parsed.language,
+                batch=batch,
+                audio_root=audio_root,
+            )
+            item_frames.append(items)
+            track_frames.append(normalized_tracks)
+            interval_frames.append(intervals)
+
+        items = pd.concat(item_frames, ignore_index=True) if item_frames else pd.DataFrame()
+        tracks = pd.concat(track_frames, ignore_index=True) if track_frames else pd.DataFrame()
+        intervals = pd.concat(interval_frames, ignore_index=True) if interval_frames else pd.DataFrame()
+
+        if items["item_id"].duplicated().any():
+            duplicates = sorted(items.loc[items["item_id"].duplicated(keep=False), "item_id"].astype(str).unique())
+            raise DatasetValidationError(
+                "MCQLL token_id values must be unique across selected batches. "
+                f"Duplicate item_id values: {duplicates[:10]}"
+            )
+
+        available_formants = [
+            Formant(formant)
+            for formant in FORMANT_COLUMNS
+            if formant in tracks.columns and tracks[formant].notna().any()
+        ]
+        if not available_formants:
+            raise DatasetValidationError("Selected MCQLL batches contain no usable smoothed formant values.")
+
+        preparation_config = {
+            "corpus": parsed.corpus,
+            "language": parsed.language,
+            "batches": batches,
+            "gold_root": str(gold_root),
+            "audio_root": str(audio_root),
+            "source_export_schemas": source_schemas,
+            "gold_columns": dict(_SOURCE_FORMANT_COLUMNS),
+        }
+        manifest = DatasetManifest(
+            name=parsed.name,
+            source="mcqll",
+            adapter=self.name,
+            adapter_version=self.version,
+            annotation_type=AnnotationType.TRACK,
+            available_formants=available_formants,
+            preparation_config=preparation_config,
+        )
+        return PreparedDataset(
+            manifest=manifest,
+            items=items,
             tracks=tracks,
-            corpus=parsed.corpus,
-            language=parsed.language,
-            batch=batch,
-            audio_root=audio_root,
+            intervals=intervals,
+            splits=empty_splits(),
+            static_measurements=None,
         )
-        item_frames.append(items)
-        track_frames.append(normalized_tracks)
-        interval_frames.append(intervals)
-    
-    items = pd.concat(item_frames, ignore_index=True) if item_frames else pd.DataFrame()
-    tracks = pd.concat(track_frames, ignore_index=True) if track_frames else pd.DataFrame()
-    intervals = pd.concat(interval_frames, ignore_index=True) if interval_frames else pd.DataFrame()
-
-    if items["item_id"].duplicated().any():
-        duplicates = sorted(items.loc[items["item_id"].duplicated(keep=False), "item_id"].astype(str).unique())
-        raise DatasetValidationError(
-            "MCQLL token_id values must be unique across selected batches. "
-            f"Duplicate item_id values: {duplicates[:10]}"
-        )
-    
-    available_formants = [
-        Formant(formant)
-        for formant in FORMANT_COLUMNS
-        if formant in tracks.columns and tracks[formant].notna().any()
-    ]
-    if not available_formants:
-        raise DatasetValidationError("Selected MCQLL batches contain no usable smoothed formant values.")
-    
-    preparation_config = {
-        "corpus": parsed.corpus,
-        "language": parsed.language,
-        "batches": batches,
-        "gold_root": str(gold_root),
-        "audio_root": str(audio_root),
-        "source_export_schemas": source_schemas,
-        "gold_columns": dict(_SOURCE_FORMANT_COLUMNS),
-    }
-    manifest = DatasetManifest(
-        name=parsed.name,
-        source="mcqll",
-        adapter=self.name,
-        adapter_version=self.version,
-        annotation_type=AnnotationType.TRACK,
-        available_formants=available_formants,
-        preparation_config=preparation_config,
-    )
-    return PreparedDataset(
-        manifest=manifest,
-        items=items,
-        tracks=tracks,
-        intervals=intervals,
-        splits=empty_splits(),
-        static_measurements=None,
-    )
 
 
 def _resolve_batches(gold_root: Path, configured: str | Sequence[str]) -> list[str]:
@@ -226,7 +226,7 @@ def _prepare_batch(
         raise DatasetValidationError(
             f"MCQLL token metadata does not match configured corpus/batch for '{corpus}/{batch}'."
         )
-    
+
     exported_ids = set(exported["token_id"].astype(str))
     source_track_ids = set(tracks["token_id"].astype(str))
     missing_tracks = sorted(exported_ids - source_track_ids)
@@ -239,7 +239,7 @@ def _prepare_batch(
         raise DatasetValidationError(
             f"MCQLL tracks contain token(s) not marked exported in batch '{batch}': {unexpected_tracks[:10]}"
         )
-    
+
     item_rows: list[dict[str, Any]] = []
     interval_rows: list[dict[str, Any]] = []
     timing: dict[str, tuple[float, float | None]] = {}
@@ -335,7 +335,7 @@ def _prepare_batch(
                 **common_interval_metadata,
             }
         )
-    
+
     normalized_track_frames: list[pd.DataFrame] = []
     for token_id, group in tracks.groupby("token_id", sort=False):
         item_id = str(token_id)
