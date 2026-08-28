@@ -1,0 +1,1 @@
+"""Configuration loading and deterministic precedence resolution"""
