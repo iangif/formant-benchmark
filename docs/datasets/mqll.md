@@ -78,8 +78,8 @@ For every selected batch, the adapter:
 2. keeps only tokens whose final export status is `exported`;
 3. locates `<file_stem>.wav` in the matching batch audio directory;
 4. treats each exported vowel token as one source-native benchmark item;
-5. maps the exporter's smoothed `F1_s`-`F4_s` columns to canonical benchmark
-   `F1`-`F4` gold tracks;
+5. maps the exporter's raw `F1`-`F4` columns directly to canonical benchmark
+   `F1`-`F4` gold tracks; the smoothed `F1_s`-`F4_s` columns are not used as gold;
 6. converts timestamps and phone boundaries to item-relative seconds when needed;
 7. preserves a source phone interval and adds the corresponding derived vowel
    interval;
@@ -87,7 +87,7 @@ For every selected batch, the adapter:
 9. leaves `splits.parquet` empty because annotation batches are not experimental
    train/dev/test splits.
 
-Available formants are inferred from the non-missing smoothed gold values across
+Available formants are inferred from the non-missing raw gold values across
 the selected batches, so F4 remains optional.
 
 ## Selecting batches
