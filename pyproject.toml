@@ -15,6 +15,9 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 
+[project.scripts]
+formant-benchmark = "formant_benchmark.cli.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
