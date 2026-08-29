@@ -1,0 +1,26 @@
+adapter: vtr
+name: vtr
+vtr_root: data/raw/vtr/VTRFormants
+audio_root: data/raw/vtr/TIMIT_fixed
+language: english
+vowel_labels:
+  - aa
+  - ae
+  - ah
+  - ao
+  - aw
+  - ax
+  - ax-h
+  - axr
+  - ay
+  - eh
+  - er
+  - ey
+  - ih
+  - ix
+  - iy
+  - ow
+  - oy
+  - uh
+  - uw
+  - ux

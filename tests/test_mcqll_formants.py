@@ -102,13 +102,13 @@ def test_batch_selection_preserves_batch_as_metadata(tmp_path: Path, monkeypatch
     assert all_batches.manifest.preparation_config["batches"] == ["batch1", "batch2"]
 
 
-def test_adapter_uses_smoothed_gold_and_excludes_nonexported_tokens(
+def test_adapter_uses_raw_gold_and_excludes_nonexported_tokens(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gold_root, audio_root, frames = create_source_layout(tmp_path, corpus="ls_eng", batches=("batch1",))
     tracks_path = gold_root / "batch1" / "tracks.parquet"
-    frames[tracks_path]["F1"] = [9999.0, 9999.0]
+    frames[tracks_path]["F1_s"] = [9999.0, 9999.0]
     _patch_parquet(monkeypatch, frames)
 
     dataset = MCQLLFormantsAdapter().prepare(

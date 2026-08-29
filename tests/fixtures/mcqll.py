@@ -80,10 +80,14 @@ def mcqll_source_frames(
         {
             "token_id": [exported_id, exported_id],
             "time": [0.05, 0.15],
-            "F1_s": [500.0, 510.0],
-            "F2_s": [1500.0, 1510.0],
-            "F3_s": [2500.0, 2510.0],
-            "F4_s": [3500.0, 3510.0] if include_f4 else [None, None],
+            "F1": [500.0, 510.0],
+            "F2": [1500.0, 1510.0],
+            "F3": [2500.0, 2510.0],
+            "F4": [3500.0, 3510.0] if include_f4 else [None, None],
+            "F1_s": [550.0, 560.0],
+            "F2_s": [1550.0, 1560.0],
+            "F3_s": [2550.0, 2560.0],
+            "F4_s": [3550.0, 3560.0] if include_f4 else [None, None],
         }
     )
     return tokens, tracks

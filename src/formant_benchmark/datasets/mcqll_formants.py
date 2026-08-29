@@ -23,7 +23,7 @@ from formant_benchmark.data.schemas import FORMANT_COLUMNS, empty_splits
 from formant_benchmark.datasets.base import DatasetAdapter
 from formant_benchmark.exceptions import ConfigurationError, DatasetValidationError
 
-_SOURCE_FORMANT_COLUMNS = {formant: f"{formant}_s" for formant in FORMANT_COLUMNS}
+_SOURCE_FORMANT_COLUMNS = {formant: formant for formant in FORMANT_COLUMNS}
 _REQUIRED_EXPORT_FILES = ("tracks.parquet", "tokens.parquet", "export_manifest.json")
 _TIME_TOLERANCE_S = 1e-3
 
@@ -67,8 +67,8 @@ class MCQLLFormantsAdapter(DatasetAdapter):
     """Adapt final formants-export snapshots for one MCQLL language.
 
     One exported vowel token becomes one source-native benchmark item. The adapter
-    uses the exporter's smoothed ``F1_s``-``F4_s`` columns as canonical gold and
-    retains annotation batches only as metadata, never as experimental splits.
+    uses the exporter's raw ``F1``-``F4`` columns as canonical gold and retains
+    annotation batches only as metadata, never as experimental splits.
     """
 
     name = "mcqll_formants"
@@ -126,7 +126,7 @@ class MCQLLFormantsAdapter(DatasetAdapter):
             if formant in tracks.columns and tracks[formant].notna().any()
         ]
         if not available_formants:
-            raise DatasetValidationError("Selected MCQLL batches contain no usable smoothed formant values.")
+            raise DatasetValidationError("Selected MCQLL batches contain no usable raw formant values.")
 
         preparation_config = {
             "corpus": parsed.corpus,
