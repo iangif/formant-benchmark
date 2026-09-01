@@ -1,0 +1,6 @@
+adapter: hillenbrand
+name: hillenbrand
+root: data/raw/hillenbrand/Hillenbrand
+bigdata_file: bigdata.dat.txt
+timedata_file: timedata.dat.txt
+language: english
