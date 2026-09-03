@@ -81,10 +81,11 @@ class DatasetManifest(BaseModel):
     annotation_type: AnnotationType
     available_formants: list[Formant]
     preparation_config: dict[str, Any] = Field(default_factory=dict)
+    tracker_overrides: dict[str, dict[str, Any]] = Field(default_factory=dict)
     fingerprint: str | None = None
 
     @model_validator(mode="after")
-    def validate_available_formants(self) -> "DatasetManifest":
+    def validate_available_formants(self) -> DatasetManifest:
         if not self.available_formants:
             raise ValueError("A prepared dataset must declare at least one available formant.")
         if len(set(self.available_formants)) != len(self.available_formants):
@@ -110,7 +111,7 @@ class EvaluationUnit(BaseModel):
     end_s: float | None = None
 
     @model_validator(mode="after")
-    def validate_identity(self) -> "EvaluationUnit":
+    def validate_identity(self) -> EvaluationUnit:
         if self.evaluation_unit_type is EvaluationUnitType.STATIC_MEASUREMENT:
             if not self.measurement_id:
                 raise ValueError("Static evaluation units require measurement_id.")
@@ -138,6 +139,51 @@ class PreparedDataset:
     static_measurements: pd.DataFrame | None = None
     root: Path | None = None
 
-    def with_root(self, root: Path) -> "PreparedDataset":
+    def with_root(self, root: Path) -> PreparedDataset:
         """Return a shallow copy associated with a persisted dataset directory."""
         return replace(self, root=root)
+
+
+class PredictionRunManifest(BaseModel):
+    """Persisted identity and compatibility contract for one tracker run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1)
+    schema_version: str = "1"
+    status: str
+    dataset_name: str = Field(min_length=1)
+    dataset_fingerprint: str = Field(min_length=1)
+    tracker: str = Field(min_length=1)
+    tracker_version: str | None = None
+    tracker_formants: list[Formant]
+    prediction_formants: list[Formant] = Field(default_factory=list)
+    input_mode: TrackingInputMode
+    interval_type: str | None = None
+    split: str | None = None
+    configuration_digest: str = Field(min_length=1)
+    configuration: dict[str, Any] = Field(default_factory=dict)
+    requested_inputs: int = 0
+    succeeded_inputs: int = 0
+    failed_inputs: int = 0
+    created_at: str
+    completed_at: str | None = None
+
+    @model_validator(mode="after")
+    def validate_run_formants(self) -> PredictionRunManifest:
+        if not self.tracker_formants:
+            raise ValueError("A prediction run must declare at least one tracker formant.")
+        if not set(self.prediction_formants).issubset(self.tracker_formants):
+            raise ValueError("prediction_formants must be a subset of tracker_formants.")
+        return self
+
+
+@dataclass(slots=True)
+class PredictionRun:
+    """In-memory normalized prediction artifacts for one tracker run."""
+
+    manifest: PredictionRunManifest
+    predictions: pd.DataFrame
+    failures: pd.DataFrame
+    item_parameters: pd.DataFrame
+    root: Path | None = None

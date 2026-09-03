@@ -1,0 +1,12 @@
+# Test-only tracker configuration. Do not use synthetic predictions scientifically.
+tracker: synthetic
+
+execution:
+  backend: local
+  timeout_s: 30
+  checkpoint_every: 50
+
+parameters:
+  frame_step_s: 0.01
+  offset_hz: 0.0
+  omit_formants: []

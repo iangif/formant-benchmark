@@ -46,6 +46,18 @@ STATIC_MEASUREMENT_COLUMNS = (
     *FORMANT_COLUMNS,
 )
 
+PREDICTION_COLUMNS = ("item_id", "time_s", *FORMANT_COLUMNS)
+
+FAILURE_COLUMNS = (
+    "item_id",
+    "input_unit_id",
+    "stage",
+    "failure_type",
+    "message",
+)
+
+ITEM_PARAMETER_COLUMNS = ("item_id", "input_unit_id", "parameters_json")
+
 
 def empty_items() -> pd.DataFrame:
     """Return an empty items table with canonical common columns."""
@@ -70,3 +82,18 @@ def empty_splits() -> pd.DataFrame:
 def empty_static_measurements() -> pd.DataFrame:
     """Return an empty static-measurement table with canonical F1-F4 columns."""
     return pd.DataFrame(columns=STATIC_MEASUREMENT_COLUMNS)
+
+
+def empty_predictions() -> pd.DataFrame:
+    """Return an empty normalized tracker-output table."""
+    return pd.DataFrame(columns=PREDICTION_COLUMNS)
+
+
+def empty_failures() -> pd.DataFrame:
+    """Return an empty structured tracker-failure table."""
+    return pd.DataFrame(columns=FAILURE_COLUMNS)
+
+
+def empty_item_parameters() -> pd.DataFrame:
+    """Return an empty per-input resolved-parameter table."""
+    return pd.DataFrame(columns=ITEM_PARAMETER_COLUMNS)

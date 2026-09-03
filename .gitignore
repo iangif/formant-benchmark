@@ -8,6 +8,7 @@ dist/
 data/
 prepared/
 runs/
+!src/formant_benchmark/runs/
 evaluations/
 
 z_dev_extra/

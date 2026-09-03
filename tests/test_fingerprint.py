@@ -25,3 +25,10 @@ def test_fingerprint_ignores_set_like_batch_order() -> None:
     first.manifest.preparation_config["batches"] = ["batch1", "batch2"]
     second.manifest.preparation_config["batches"] = ["batch2", "batch1"]
     assert dataset_fingerprint(first) == dataset_fingerprint(second)
+
+
+def test_fingerprint_ignores_tracker_tuning() -> None:
+    first = trajectory_dataset()
+    second = trajectory_dataset()
+    second.manifest.tracker_overrides = {"synthetic": {"parameters": {"offset_hz": 100}}}
+    assert dataset_fingerprint(first) == dataset_fingerprint(second)
