@@ -50,4 +50,24 @@ class IncompatibleFormantsError(FormantBenchmarkError):
 
 
 class TrackerExecutionError(FormantBenchmarkError):
-    """Reserved for tracker execution failures in later deliverables."""
+    """Raised when tracker execution cannot start or safely continue."""
+
+
+class UnsupportedTrackerConfigurationError(ConfigurationError):
+    """Raised when a tracker cannot execute a requested input configuration."""
+
+
+class PredictionRunError(FormantBenchmarkError):
+    """Base class for prediction-run persistence and compatibility failures."""
+
+
+class PredictionRunAlreadyExistsError(PredictionRunError):
+    """Raised when a new run targets an existing destination."""
+
+
+class PredictionRunValidationError(PredictionRunError):
+    """Raised when prediction artifacts are structurally invalid."""
+
+
+class ResumeCompatibilityError(PredictionRunError):
+    """Raised when resume settings do not match an existing run."""

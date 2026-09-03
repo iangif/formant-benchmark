@@ -21,5 +21,8 @@ def prepare_dataset(
 ) -> PreparedDataset:
     """Run an adapter, validate normalized output, and persist it safely."""
     dataset = adapter.prepare(config)
+    tracker_overrides = config.get("tracker_overrides", {})
+    if tracker_overrides:
+        dataset.manifest = dataset.manifest.model_copy(update={"tracker_overrides": tracker_overrides})
     validate_prepared_dataset(dataset)
     return write_prepared_dataset(dataset, destination, overwrite=overwrite)

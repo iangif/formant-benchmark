@@ -38,7 +38,9 @@ def dataset_fingerprint(dataset: PreparedDataset) -> str:
     options (e.g. selected batches) are also canonicalized so equivalent prepared
     inputs do not acquire different identities from incidental configuration order.
     """
-    manifest = dataset.manifest.model_dump(mode="json", exclude={"fingerprint"})
+    # Tracker tuning is recorded with a prepared dataset for configuration lookup,
+    # but it does not change the gold data's scientific identity.
+    manifest = dataset.manifest.model_dump(mode="json", exclude={"fingerprint", "tracker_overrides"})
     manifest["preparation_config"] = _sanitize_config(manifest.get("preparation_config", {}))
 
     payload = {
