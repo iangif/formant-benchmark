@@ -187,3 +187,61 @@ class PredictionRun:
     failures: pd.DataFrame
     item_parameters: pd.DataFrame
     root: Path | None = None
+
+
+class EvaluationRunManifest(BaseModel):
+    """Resolved configuration and provenance for one evaluation result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(min_length=1)
+    schema_version: str = "1"
+    dataset_name: str = Field(min_length=1)
+    dataset_fingerprint: str = Field(min_length=1)
+    prediction_run_id: str = Field(min_length=1)
+    tracker: str = Field(min_length=1)
+    scope: EvaluationScope
+    split: str | None = None
+    selected_formants: list[Formant]
+    metrics: list[str]
+    central_region: float | None = None
+    alignment_method: str = "linear_interpolation"
+    extrapolation: bool = False
+    static_point_policy: str = "source_position_then_interval_midpoint_fallback"
+    static_window_policy: str = "piecewise_linear_time_mean"
+    fdr_relative_threshold: float = 0.30
+    fdr_absolute_threshold_hz: float = 300.0
+    formant_aggregation: str = "arithmetic_mean_over_defined_selected_formants"
+    unit_aggregation: str = "unweighted_arithmetic_mean_of_evaluation_unit_metrics"
+    group_by: list[list[str]] = Field(default_factory=list)
+    n_evaluation_units: int = 0
+    n_units_with_numerical_metrics: int = 0
+    created_at: str
+    benchmark_version: str | None = None
+    benchmark_commit: str | None = None
+
+    @model_validator(mode="after")
+    def validate_evaluation_settings(self) -> EvaluationRunManifest:
+        if not self.selected_formants:
+            raise ValueError("An evaluation must select at least one formant.")
+        if len(set(self.selected_formants)) != len(self.selected_formants):
+            raise ValueError("selected_formants must not contain duplicates.")
+        if not self.metrics:
+            raise ValueError("An evaluation must select at least one metric.")
+        if self.central_region is not None and not 0 < self.central_region <= 1:
+            raise ValueError("central_region must be greater than 0 and at most 1.")
+        if not 0 < self.fdr_relative_threshold:
+            raise ValueError("fdr_relative_threshold must be greater than zero.")
+        if not 0 < self.fdr_absolute_threshold_hz:
+            raise ValueError("fdr_absolute_threshold_hz must be greater than zero.")
+        return self
+
+
+@dataclass(slots=True)
+class EvaluationResult:
+    """In-memory detailed and aggregate artifacts for one evaluation."""
+
+    manifest: EvaluationRunManifest
+    evaluation_unit_metrics: pd.DataFrame
+    aggregate_metrics: pd.DataFrame
+    root: Path | None = None

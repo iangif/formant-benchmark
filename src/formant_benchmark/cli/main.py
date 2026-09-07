@@ -12,7 +12,7 @@ import yaml
 
 from formant_benchmark.config.loading import load_yaml
 from formant_benchmark.data.io import inspect_prepared_dataset, load_prepared_dataset
-from formant_benchmark.data.models import TrackingInputMode
+from formant_benchmark.data.models import EvaluationScope, Formant, TrackingInputMode
 from formant_benchmark.datasets import DATASET_REGISTRY, register_builtin_datasets
 from formant_benchmark.exceptions import (
     ConfigurationError,
@@ -21,9 +21,10 @@ from formant_benchmark.exceptions import (
 )
 from formant_benchmark.execution.backends import backend_from_config
 from formant_benchmark.execution.inputs import build_tracking_inputs
+from formant_benchmark.evaluation import evaluate, inspect_evaluation_result, write_evaluation_result
 from formant_benchmark.preparation.fingerprint import dataset_fingerprint
 from formant_benchmark.preparation.pipeline import prepare_dataset
-from formant_benchmark.runs.io import inspect_prediction_run
+from formant_benchmark.runs.io import inspect_prediction_run, load_prediction_run
 from formant_benchmark.trackers import TRACKER_REGISTRY, register_builtin_trackers
 
 
@@ -77,6 +78,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     track.add_argument("--resume", action="store_true", help="Explicitly resume a compatible existing run.")
     track.add_argument("--fail-fast", action="store_true", help="Stop after the first item-level failure.")
+
+    evaluate_parser = subcommands.add_parser("evaluate", help="Evaluate a PredictionRun against prepared gold.")
+    evaluate_parser.add_argument("--dataset", required=True, type=Path, help="Prepared dataset directory.")
+    evaluate_parser.add_argument("--predictions", required=True, type=Path, help="Prediction run directory.")
+    evaluate_parser.add_argument("--output", required=True, type=Path, help="Evaluation output directory.")
+    evaluate_parser.add_argument(
+        "--scope",
+        required=True,
+        choices=[value.value for value in EvaluationScope],
+        help="Required evaluation scope. 'voiced' is reserved and fails explicitly in V1.",
+    )
+    evaluate_parser.add_argument("--split", help="Optional prepared split to evaluate.")
+    evaluate_parser.add_argument(
+        "--formants",
+        nargs="+",
+        choices=[value.value for value in Formant],
+        help="Explicit formants. Defaults to the compatible gold/tracker intersection.",
+    )
+    evaluate_parser.add_argument(
+        "--metrics",
+        nargs="+",
+        choices=["rmse", "mae", "avg", "fdr", "coverage"],
+        help="Subset of V1 metrics. Defaults to all five.",
+    )
+    evaluate_parser.add_argument(
+        "--central-region",
+        type=float,
+        help="Centered fraction of each vowel interval, e.g. 0.5 for the central 50%%.",
+    )
+    evaluate_parser.add_argument(
+        "--group-by",
+        action="append",
+        default=[],
+        metavar="FIELD[,FIELD...]",
+        help="Metadata grouping; repeat for independent groupings and use commas for joint groupings.",
+    )
+    evaluate_parser.add_argument(
+        "--fdr-relative-threshold",
+        type=float,
+        default=0.30,
+        help="FDR relative-error threshold (default: 0.30).",
+    )
+    evaluate_parser.add_argument(
+        "--fdr-absolute-threshold",
+        type=float,
+        default=300.0,
+        help="FDR absolute-error threshold in Hz (default: 300).",
+    )
+    evaluate_parser.add_argument("--overwrite", action="store_true", help="Safely replace existing evaluation output.")
     return parser
 
 
@@ -178,6 +228,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             print(yaml.safe_dump(inspect_prediction_run(run), sort_keys=False).rstrip())
             return 0
+
+        if args.command == "evaluate":
+            prepared = load_prepared_dataset(args.dataset)
+            prediction_run = load_prediction_run(args.predictions)
+            result = evaluate(
+                prepared,
+                prediction_run,
+                scope=args.scope,
+                formants=args.formants,
+                metrics=args.metrics,
+                central_region=args.central_region,
+                group_by=_parse_group_by(args.group_by),
+                split=args.split,
+                fdr_relative_threshold=args.fdr_relative_threshold,
+                fdr_absolute_threshold_hz=args.fdr_absolute_threshold,
+                evaluation_id=args.output.name,
+            )
+            write_evaluation_result(result, args.output, overwrite=args.overwrite)
+            print(yaml.safe_dump(inspect_evaluation_result(result), sort_keys=False).rstrip())
+            return 0
     except FormantBenchmarkError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -215,6 +285,16 @@ def _parse_parameters(values: list[str]) -> dict[str, object]:
             raise ConfigurationError(f"CLI parameter '{key}' was provided more than once.")
         result[key] = yaml.safe_load(raw)
     return result
+
+
+def _parse_group_by(values: list[str]) -> list[list[str]]:
+    groups: list[list[str]] = []
+    for raw in values:
+        fields = [field.strip() for field in raw.split(",") if field.strip()]
+        if not fields:
+            raise ConfigurationError("--group-by requires at least one metadata field.")
+        groups.append(fields)
+    return groups
 
 
 if __name__ == "__main__":
