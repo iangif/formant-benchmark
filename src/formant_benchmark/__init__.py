@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from formant_benchmark.data.models import (
         AnnotationType,
         DatasetManifest,
+        EvaluationResult,
+        EvaluationRunManifest,
         EvaluationScope,
         EvaluationUnit,
         EvaluationUnitType,
@@ -26,6 +28,8 @@ if TYPE_CHECKING:
 __all__ = [
     "AnnotationType",
     "DatasetManifest",
+    "EvaluationResult",
+    "EvaluationRunManifest",
     "EvaluationScope",
     "EvaluationUnit",
     "EvaluationUnitType",

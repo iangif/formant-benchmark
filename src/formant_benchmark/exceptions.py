@@ -71,3 +71,19 @@ class PredictionRunValidationError(PredictionRunError):
 
 class ResumeCompatibilityError(PredictionRunError):
     """Raised when resume settings do not match an existing run."""
+
+
+class EvaluationError(FormantBenchmarkError):
+    """Base class for evaluation compatibility and persistence failures."""
+
+
+class EvaluationCompatibilityError(EvaluationError):
+    """Raised when a prepared dataset and PredictionRun cannot be scored together."""
+
+
+class EvaluationAlreadyExistsError(EvaluationError):
+    """Raised when evaluation output already exists without explicit overwrite."""
+
+
+class EvaluationValidationError(EvaluationError):
+    """Raised when persisted evaluation artifacts are structurally invalid."""
