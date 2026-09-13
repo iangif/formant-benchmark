@@ -160,6 +160,7 @@ class PredictionRunManifest(BaseModel):
     prediction_formants: list[Formant] = Field(default_factory=list)
     input_mode: TrackingInputMode
     interval_type: str | None = None
+    interval_padding_s: float = Field(default=0.0, ge=0.0, allow_inf_nan=False)
     split: str | None = None
     configuration_digest: str = Field(min_length=1)
     configuration: dict[str, Any] = Field(default_factory=dict)

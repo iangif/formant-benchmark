@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -53,6 +54,7 @@ def execute_prediction_run(
     experiment_config: Mapping[str, Any] | None = None,
     cli_parameters: Mapping[str, Any] | None = None,
     interval_type: str | None = None,
+    interval_padding_s: float = 0.0,
     split: str | None = None,
     resume: bool = False,
     fail_fast: bool = False,
@@ -60,10 +62,11 @@ def execute_prediction_run(
 ) -> PredictionRun:
     """Execute every pending input and checkpoint normalized artifacts."""
     root = Path(destination)
+    interval_padding_s = _normalize_interval_padding(input_mode, interval_padding_s)
     effective_config = deep_merge(tracker.default_configuration, tracker_config)
     command = tuple(tracker.wrapper_command(effective_config))
     backend = backend_from_config(effective_config)
-    check = backend.check(command)
+    check = tracker.check_environment(effective_config)
     if not check["available"]:
         raise TrackerExecutionError("; ".join(check["problems"]))
     timeout_s = _timeout(effective_config)
@@ -84,6 +87,7 @@ def execute_prediction_run(
         "cli_parameters": dict(cli_parameters or {}),
         "input_mode": input_mode.value,
         "interval_type": interval_type,
+        "interval_padding_s": interval_padding_s,
         "split": split,
         "input_unit_ids": [value.input_unit_id for value in inputs],
     }
@@ -128,6 +132,7 @@ def execute_prediction_run(
             tracker_formants=_ordered_formants(tracker.capabilities.formants),
             input_mode=input_mode,
             interval_type=interval_type,
+            interval_padding_s=interval_padding_s,
             split=split,
             configuration_digest=digest,
             configuration=_redact_configuration(compatibility),
@@ -188,6 +193,7 @@ def execute_prediction_run(
                         supported,
                     )
                     prediction["time_s"] = prediction["time_s"] + tracking_input.source_start_s
+                    prediction = _restrict_to_target(prediction, tracking_input)
                     prediction = _deduplicate_predictions(prediction, prediction_keys)
                     if not prediction.empty:
                         pending.predictions.append(prediction)
@@ -346,6 +352,17 @@ def _deduplicate_predictions(
     return kept
 
 
+def _restrict_to_target(prediction: pd.DataFrame, tracking_input: TrackingInput) -> pd.DataFrame:
+    """Keep padded-input predictions only inside the original requested interval."""
+    if tracking_input.target_start_s is None or tracking_input.target_end_s is None:
+        return prediction
+    tolerance = 1e-9
+    return prediction.loc[
+        (prediction["time_s"] >= tracking_input.target_start_s - tolerance)
+        & (prediction["time_s"] <= tracking_input.target_end_s + tolerance)
+    ].copy()
+
+
 def _stage_audio(audio_path: Path, unit_root: Path) -> Path:
     """Make audio visible inside the backend work directory without copying when possible."""
     if not audio_path.is_file():
@@ -380,6 +397,18 @@ def _timeout(config: Mapping[str, Any]) -> float | None:
     if timeout <= 0:
         raise TrackerExecutionError("execution.timeout_s must be greater than zero.")
     return timeout
+
+
+def _normalize_interval_padding(input_mode: TrackingInputMode, value: float) -> float:
+    try:
+        padding = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError("interval padding must be a finite non-negative number of seconds.") from exc
+    if not math.isfinite(padding) or padding < 0:
+        raise ConfigurationError("interval padding must be a finite non-negative number of seconds.")
+    if padding > 0 and input_mode is not TrackingInputMode.CROPPED_INTERVALS:
+        raise ConfigurationError("interval padding is only supported with cropped_intervals input.")
+    return padding
 
 
 def _execution_positive_int(

@@ -19,7 +19,6 @@ from formant_benchmark.exceptions import (
     FormantBenchmarkError,
     TrackerExecutionError,
 )
-from formant_benchmark.execution.backends import backend_from_config
 from formant_benchmark.execution.inputs import build_tracking_inputs
 from formant_benchmark.evaluation import evaluate, inspect_evaluation_result, write_evaluation_result
 from formant_benchmark.preparation.fingerprint import dataset_fingerprint
@@ -68,6 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Audio/information supplied to the tracker.",
     )
     track.add_argument("--interval-type", help="Interval type for cropped or interval-aware input.")
+    track.add_argument(
+        "--interval-padding",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Context added on each side of cropped intervals before tracking (default: 0).",
+    )
     track.add_argument("--split", help="Track only items in this prepared split.")
     track.add_argument(
         "--parameter",
@@ -186,9 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             tracker = TRACKER_REGISTRY.get(args.tracker)()
             config = _tracker_config(args.config, tracker.name)
             effective = _merge_tracker_defaults(tracker.default_configuration, config)
-            backend = backend_from_config(effective)
-            result = backend.check(tracker.wrapper_command(effective))
-            result["tracker"] = tracker.name
+            result = tracker.check_environment(effective)
             print(yaml.safe_dump(result, sort_keys=False).rstrip())
             if not result["available"]:
                 raise TrackerExecutionError("Tracker prerequisites are not available; see check output above.")
@@ -207,6 +211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     tracker,
                     input_mode=input_mode,
                     interval_type=args.interval_type,
+                    interval_padding_s=args.interval_padding,
                     split=args.split,
                     temporary_directory=Path(temporary),
                 )
@@ -221,6 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     cli_parameters=cli_parameters,
                     input_mode=input_mode,
                     interval_type=args.interval_type,
+                    interval_padding_s=args.interval_padding,
                     split=args.split,
                     resume=args.resume,
                     fail_fast=args.fail_fast,

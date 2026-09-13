@@ -9,7 +9,7 @@ from tests.fixtures.synthetic import trajectory_dataset
 
 def test_tracker_list_inspect_and_check(capsys) -> None:
     assert main(["tracker", "list"]) == 0
-    assert capsys.readouterr().out.strip() == "synthetic"
+    assert capsys.readouterr().out.strip().splitlines() == ["fasttrackpy", "synthetic"]
     assert main(["tracker", "inspect", "synthetic"]) == 0
     assert "cropped_intervals" in capsys.readouterr().out
     assert main(["tracker", "check", "synthetic"]) == 0

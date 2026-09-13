@@ -10,6 +10,7 @@ import pytest
 
 from formant_benchmark.data.models import TrackingInputMode
 from formant_benchmark.exceptions import (
+    ConfigurationError,
     ResumeCompatibilityError,
     UnsupportedVoicedFeatureError,
 )
@@ -22,12 +23,22 @@ from formant_benchmark.trackers.synthetic import SyntheticTracker
 from tests.fixtures.synthetic import trajectory_dataset
 
 
-def _inputs(dataset, tracker, tmp_path, *, mode=TrackingInputMode.FULL_ITEM, interval_type=None, split=None):
+def _inputs(
+    dataset,
+    tracker,
+    tmp_path,
+    *,
+    mode=TrackingInputMode.FULL_ITEM,
+    interval_type=None,
+    interval_padding_s=0.0,
+    split=None,
+):
     return build_tracking_inputs(
         dataset,
         tracker,
         input_mode=mode,
         interval_type=interval_type,
+        interval_padding_s=interval_padding_s,
         split=split,
         temporary_directory=tmp_path / "inputs",
     )
@@ -293,6 +304,125 @@ def test_cropped_interval_times_are_returned_to_parent_coordinates(tmp_path: Pat
     )
     assert run.item_parameters["input_unit_id"].tolist() == ["utt-1:v1"]
     assert run.predictions["time_s"].tolist() == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_interval_padding_expands_tracker_input_but_preserves_target_interval(tmp_path: Path) -> None:
+    dataset = trajectory_dataset()
+    audio = tmp_path / "utt-1.wav"
+    _write_wav(audio, duration_s=0.4)
+    dataset.items.loc[dataset.items["item_id"] == "utt-1", "audio_path"] = str(audio)
+
+    inputs = _inputs(
+        dataset,
+        SyntheticTracker(),
+        tmp_path,
+        mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+        interval_padding_s=0.025,
+        split="train",
+    )
+
+    assert len(inputs) == 1
+    tracking_input = inputs[0]
+    assert tracking_input.source_start_s == pytest.approx(0.075)
+    assert tracking_input.source_end_s == pytest.approx(0.325)
+    assert tracking_input.duration_s == pytest.approx(0.25)
+    assert tracking_input.target_start_s == pytest.approx(0.1)
+    assert tracking_input.target_end_s == pytest.approx(0.3)
+    with wave.open(str(tracking_input.audio_path), "rb") as reader:
+        assert reader.getnframes() / reader.getframerate() == pytest.approx(0.25)
+
+
+def test_interval_padding_is_clamped_to_item_boundaries(tmp_path: Path) -> None:
+    dataset = trajectory_dataset()
+    audio = tmp_path / "utt-1.wav"
+    _write_wav(audio, duration_s=0.4)
+    dataset.items.loc[dataset.items["item_id"] == "utt-1", "audio_path"] = str(audio)
+    vowel = dataset.intervals["interval_id"] == "utt-1:v1"
+    dataset.intervals.loc[vowel, ["start_s", "end_s"]] = [0.0, 0.4]
+
+    inputs = _inputs(
+        dataset,
+        SyntheticTracker(),
+        tmp_path,
+        mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+        interval_padding_s=0.025,
+        split="train",
+    )
+
+    tracking_input = inputs[0]
+    assert tracking_input.source_start_s == pytest.approx(0.0)
+    assert tracking_input.source_end_s == pytest.approx(0.4)
+    assert tracking_input.duration_s == pytest.approx(0.4)
+
+
+def test_padded_predictions_are_trimmed_back_to_original_interval(tmp_path: Path) -> None:
+    dataset = trajectory_dataset()
+    audio = tmp_path / "utt-1.wav"
+    _write_wav(audio, duration_s=0.4)
+    dataset.items.loc[dataset.items["item_id"] == "utt-1", "audio_path"] = str(audio)
+    tracker = SyntheticTracker()
+    inputs = _inputs(
+        dataset,
+        tracker,
+        tmp_path,
+        mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+        interval_padding_s=0.05,
+        split="train",
+    )
+    run = _run(
+        dataset,
+        tracker,
+        inputs,
+        tmp_path / "run",
+        input_mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+        interval_padding_s=0.05,
+        split="train",
+        cli_parameters={"frame_step_s": 0.05},
+    )
+
+    assert run.manifest.interval_padding_s == pytest.approx(0.05)
+    assert run.predictions["time_s"].tolist() == pytest.approx([0.1, 0.15, 0.2, 0.25, 0.3])
+    with pytest.raises(ResumeCompatibilityError):
+        _run(
+            dataset,
+            tracker,
+            inputs,
+            tmp_path / "run",
+            input_mode=TrackingInputMode.CROPPED_INTERVALS,
+            interval_type="vowel",
+            interval_padding_s=0.025,
+            split="train",
+            cli_parameters={"frame_step_s": 0.05},
+            resume=True,
+        )
+
+
+@pytest.mark.parametrize("padding", [-0.001, float("inf")])
+def test_invalid_interval_padding_is_rejected(tmp_path: Path, padding: float) -> None:
+    dataset = trajectory_dataset()
+    with pytest.raises(ConfigurationError, match="interval padding"):
+        _inputs(
+            dataset,
+            SyntheticTracker(),
+            tmp_path,
+            mode=TrackingInputMode.CROPPED_INTERVALS,
+            interval_type="vowel",
+            interval_padding_s=padding,
+        )
+
+
+def test_nonzero_interval_padding_requires_cropped_input(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="only supported with cropped_intervals"):
+        _inputs(
+            trajectory_dataset(),
+            SyntheticTracker(),
+            tmp_path,
+            interval_padding_s=0.025,
+        )
 
 
 def test_voiced_input_fails_before_execution(tmp_path: Path) -> None:

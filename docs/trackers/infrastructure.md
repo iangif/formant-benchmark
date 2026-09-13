@@ -32,18 +32,26 @@ formant-benchmark track \
   --tracker synthetic \
   --input-mode cropped_intervals \
   --interval-type vowel \
+  --interval-padding 0.035 \
   --split test \
   --parameter frame_step_s=0.01 \
   --output runs/synthetic-vtr-vowels
 ```
 
-`cropped_intervals` requires real WAV files even for the synthetic tracker because
-the benchmark exercises and verifies the crop operation. Wrapper-relative times are
-converted back to source-item coordinates before persistence. `voiced` interval input
-fails explicitly because pitch-based voiced segmentation is deferred.
+`--interval-padding` adds the requested seconds of acoustic context on both sides of
+each cropped interval and is valid only with `cropped_intervals`. Padding is clamped
+at source-item boundaries. It changes the audio supplied to the tracker, but normalized
+predictions are trimmed back to the original target interval before persistence so
+padding cannot create overlapping duplicate item/time predictions. The resolved padding
+value is recorded in `run_manifest.yaml` and participates in resume compatibility.
+
+`cropped_intervals` requires real WAV files even for the synthetic tracker because the
+benchmark exercises and verifies the crop operation. Wrapper-relative times are converted
+back to source-item coordinates before persistence. `voiced` interval input fails
+explicitly because pitch-based voiced segmentation is deferred.
 
 Resume is never inferred. Use `--resume` with the same dataset fingerprint, tracker,
-configuration, input mode, interval type, split, and selected input units:
+configuration, input mode, interval type, interval padding, split, and selected input units:
 
 ```bash
 formant-benchmark track ... --output runs/synthetic-vtr --resume

@@ -79,6 +79,7 @@ def inspect_prediction_run(run: PredictionRun) -> dict[str, object]:
         "tracker": run.manifest.tracker,
         "input_mode": run.manifest.input_mode.value,
         "interval_type": run.manifest.interval_type,
+        "interval_padding_s": run.manifest.interval_padding_s,
         "split": run.manifest.split,
         "prediction_formants": [value.value for value in run.manifest.prediction_formants],
         "requested_inputs": run.manifest.requested_inputs,

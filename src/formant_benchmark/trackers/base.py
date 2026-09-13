@@ -38,6 +38,8 @@ class TrackingInput:
     source_end_s: float
     metadata: Mapping[str, Any]
     intervals: tuple[Mapping[str, Any], ...] = ()
+    target_start_s: float | None = None
+    target_end_s: float | None = None
 
 
 class TrackerAdapter(ABC):
@@ -61,6 +63,15 @@ class TrackerAdapter(ABC):
     def validate_parameters(self, parameters: Mapping[str, Any]) -> None:
         """Validate tracker-owned parameters before execution."""
 
+    def check_environment(self, config: Mapping[str, Any]) -> dict[str, Any]:
+        """Check generic execution prerequisites for this tracker configuration."""
+        from formant_benchmark.execution.backends import backend_from_config
+
+        backend = backend_from_config(config)
+        result = backend.check(self.wrapper_command(config))
+        result["tracker"] = self.name
+        return result
+
     def run(
         self,
         inputs: Sequence[TrackingInput],
@@ -74,6 +85,7 @@ class TrackerAdapter(ABC):
         cli_parameters: Mapping[str, Any] | None = None,
         input_mode: TrackingInputMode,
         interval_type: str | None = None,
+        interval_padding_s: float = 0.0,
         split: str | None = None,
         resume: bool = False,
         fail_fast: bool = False,
@@ -94,6 +106,7 @@ class TrackerAdapter(ABC):
             dataset_name=dataset_name,
             input_mode=input_mode,
             interval_type=interval_type,
+            interval_padding_s=interval_padding_s,
             split=split,
             resume=resume,
             fail_fast=fail_fast,
