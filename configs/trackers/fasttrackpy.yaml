@@ -1,0 +1,26 @@
+tracker: fasttrackpy
+
+# Point this at the Python executable from the isolated environment created
+# according to docs/environments/fasttrackpy.md.
+execution:
+  backend: local
+  command: .venvs/fasttrackpy/bin/python
+  timeout_s: 120
+  checkpoint_every: 50
+
+# Official FastTrackPy 0.6.1 defaults. The benchmark exports the smoothed
+# trajectory from the automatically selected winning candidate.
+parameters:
+  min_max_formant: 4000.0
+  max_max_formant: 7000.0
+  nstep: 20
+  n_formants: 4
+  window_length: 0.025
+  time_step: 0.002
+  pre_emphasis_from: 50.0
+  pitch_floor: 75.0
+  smoother_method: dct_smooth_regression
+  smoother_order: 5
+  loss_method: lmse
+  agg_method: agg_sum
+  heuristics: []

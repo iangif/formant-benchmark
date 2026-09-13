@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import wave
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ def build_tracking_inputs(
     *,
     input_mode: TrackingInputMode,
     interval_type: str | None,
+    interval_padding_s: float = 0.0,
     split: str | None,
     temporary_directory: Path,
 ) -> list[TrackingInput]:
@@ -36,6 +38,7 @@ def build_tracking_inputs(
         raise UnsupportedTrackerConfigurationError(
             f"Tracker '{tracker.name}' does not support input mode '{input_mode.value}'."
         )
+    interval_padding_s = _validate_interval_padding(input_mode, interval_padding_s)
     if interval_type == IntervalType.VOICED.value:
         require_voiced_feature()
     if input_mode is TrackingInputMode.CROPPED_INTERVALS and not interval_type:
@@ -72,18 +75,22 @@ def build_tracking_inputs(
             for interval in item_intervals.sort_values(["start_s", "interval_id"], kind="stable").to_dict(orient="records"):
                 start_s = float(interval["start_s"])
                 end_s = float(interval["end_s"])
+                crop_start_s = max(0.0, start_s - interval_padding_s)
+                crop_end_s = min(duration_s, end_s + interval_padding_s)
                 input_unit_id = str(interval["interval_id"])
                 cropped_path = temporary_directory / f"{_safe_name(input_unit_id)}.wav"
-                _crop_wav(audio_path, cropped_path, start_s, end_s)
+                _crop_wav(audio_path, cropped_path, crop_start_s, crop_end_s)
                 result.append(
                     TrackingInput(
                         item_id=item_id,
                         input_unit_id=input_unit_id,
                         audio_path=cropped_path,
-                        duration_s=end_s - start_s,
-                        source_start_s=start_s,
-                        source_end_s=end_s,
+                        duration_s=crop_end_s - crop_start_s,
+                        source_start_s=crop_start_s,
+                        source_end_s=crop_end_s,
                         metadata=_metadata(item, interval),
+                        target_start_s=start_s,
+                        target_end_s=end_s,
                     )
                 )
             continue
@@ -104,6 +111,18 @@ def build_tracking_inputs(
             )
         )
     return result
+
+
+def _validate_interval_padding(input_mode: TrackingInputMode, interval_padding_s: float) -> float:
+    try:
+        padding = float(interval_padding_s)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError("interval padding must be a finite non-negative number of seconds.") from exc
+    if not math.isfinite(padding) or padding < 0:
+        raise ConfigurationError("interval padding must be a finite non-negative number of seconds.")
+    if padding > 0 and input_mode is not TrackingInputMode.CROPPED_INTERVALS:
+        raise ConfigurationError("interval padding is only supported with cropped_intervals input.")
+    return padding
 
 
 def _select_items(dataset: PreparedDataset, split: str | None) -> pd.DataFrame:
