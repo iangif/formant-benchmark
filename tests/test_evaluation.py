@@ -26,7 +26,15 @@ from formant_benchmark.preparation.fingerprint import dataset_fingerprint
 from tests.fixtures.synthetic import static_dataset, trajectory_dataset
 
 
-def _prediction_run(dataset, predictions: pd.DataFrame, *, split: str | None = None, formants=None) -> PredictionRun:
+def _prediction_run(
+    dataset,
+    predictions: pd.DataFrame,
+    *,
+    split: str | None = None,
+    formants=None,
+    input_mode: TrackingInputMode = TrackingInputMode.FULL_ITEM,
+    interval_type: str | None = None,
+) -> PredictionRun:
     tracker_formants = list(Formant if formants is None else formants)
     item_ids = dataset.items["item_id"].astype(str).tolist()
     if split is not None:
@@ -44,7 +52,8 @@ def _prediction_run(dataset, predictions: pd.DataFrame, *, split: str | None = N
         tracker="synthetic",
         tracker_formants=tracker_formants,
         prediction_formants=tracker_formants,
-        input_mode=TrackingInputMode.FULL_ITEM,
+        input_mode=input_mode,
+        interval_type=interval_type,
         split=split,
         configuration_digest="test",
         requested_inputs=len(parameters),
@@ -213,6 +222,32 @@ def test_voiced_scope_and_incompatible_fingerprint_fail_early() -> None:
     run.manifest.dataset_fingerprint = "different"
     with pytest.raises(DatasetFingerprintMismatchError):
         evaluate(dataset, run, scope="all")
+
+
+def test_fingerprint_mismatch_precedes_formant_compatibility() -> None:
+    dataset = trajectory_dataset()
+    run = _prediction_run(dataset, dataset.tracks.copy(), formants=[Formant.F1])
+    run.manifest.prediction_formants = []
+    run.manifest.dataset_fingerprint = "different"
+
+    with pytest.raises(DatasetFingerprintMismatchError):
+        evaluate(dataset, run, scope="all")
+
+
+def test_all_scope_rejects_cropped_interval_prediction_run() -> None:
+    dataset = trajectory_dataset()
+    run = _prediction_run(
+        dataset,
+        dataset.tracks.copy(),
+        input_mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+    )
+
+    with pytest.raises(EvaluationCompatibilityError, match="cropped intervals.*cannot be evaluated with scope 'all'"):
+        evaluate(dataset, run, scope="all")
+
+    compatible = evaluate(dataset, run, scope="vowels")
+    assert compatible.manifest.scope.value == "vowels"
 
 
 def test_evaluation_split_defaults_to_prediction_run_split_and_rejects_mismatch() -> None:

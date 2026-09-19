@@ -1,0 +1,18 @@
+tracker: formants_tracker
+
+# Local execution paths are resolved from the formant-benchmark repository root.
+# On Windows, change command to .venvs/formants_tracker/Scripts/python.exe.
+execution:
+  backend: local
+  command: .venvs/formants_tracker/bin/python
+  working_directory: external/FormantsTracker
+  environment:
+    PYTHONPATH: src
+  timeout_s: 120
+  checkpoint_every: 50
+
+parameters:
+  # Checkpoint paths remain relative to the FormantsTracker working directory.
+  checkpoint: saved_ckpts/196_1125.ckpt
+  # auto uses CUDA when available and otherwise CPU. Also accepts cpu or cuda.
+  device: auto

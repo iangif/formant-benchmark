@@ -10,6 +10,7 @@ import pytest
 
 from formant_benchmark.data.models import Formant
 from formant_benchmark.datasets.mcqll_formants import MCQLLFormantsAdapter
+from formant_benchmark.exceptions import DatasetValidationError
 from formant_benchmark.preparation.validation import validate_prepared_dataset
 from tests.fixtures.mcqll import create_source_layout
 
@@ -62,6 +63,95 @@ def test_shared_adapter_prepares_each_language(
     assert vowel["origin"] == "derived"
     assert vowel["start_s"] == pytest.approx(0.06)
     assert vowel["end_s"] == pytest.approx(0.14)
+    assert dataset.tracks["time_s"].tolist() == pytest.approx([0.06, 0.14])
+    assert (dataset.tracks["time_s"] >= vowel["start_s"]).all()
+    assert (dataset.tracks["time_s"] <= vowel["end_s"]).all()
+    assert (
+        dataset.manifest.preparation_config["track_time_mapping"]
+        == "fasttrack_candidate_to_vowel_interval"
+    )
+
+
+def test_candidate_times_are_translated_not_treated_as_clip_relative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gold_root, audio_root, frames = create_source_layout(tmp_path, corpus="ls_eng", batches=("batch1",))
+    batch_root = gold_root / "batch1"
+    token_frame = frames[batch_root / "tokens.parquet"]
+    metadata = token_frame.loc[0, "metadata"]
+    metadata["intervals"]["clip"] = {"begin": 10.0, "end": 10.4}
+    metadata["intervals"]["phone"]["begin"] = 10.26
+    metadata["intervals"]["phone"]["end"] = 10.34
+    metadata["intervals"]["phone"]["corrected_begin"] = 10.26
+    metadata["intervals"]["phone"]["corrected_end"] = 10.34
+
+    # Replace the fixture WAV with the larger 400 ms source-native clip.
+    from tests.fixtures.mcqll import write_silent_wav
+
+    write_silent_wav(audio_root / "batch1" / "audio" / "t1_exported.wav", duration_s=0.4)
+    _patch_parquet(monkeypatch, frames)
+
+    dataset = MCQLLFormantsAdapter().prepare(
+        {
+            "adapter": "mcqll_formants",
+            "name": "mcqll_english",
+            "corpus": "ls_eng",
+            "language": "english",
+            "gold_root": gold_root,
+            "audio_root": audio_root,
+        }
+    )
+
+    vowel = dataset.intervals.loc[dataset.intervals["interval_type"] == "vowel"].iloc[0]
+    assert vowel["start_s"] == pytest.approx(0.26)
+    assert vowel["end_s"] == pytest.approx(0.34)
+    assert dataset.tracks["time_s"].tolist() == pytest.approx([0.26, 0.34])
+
+
+def test_candidate_duration_must_match_vowel_duration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gold_root, audio_root, frames = create_source_layout(tmp_path, corpus="ls_eng", batches=("batch1",))
+    tracks_path = gold_root / "batch1" / "tracks.parquet"
+    frames[tracks_path]["time"] = [0.025, 0.205]
+    _patch_parquet(monkeypatch, frames)
+
+    with pytest.raises(DatasetValidationError, match="candidate duration is inconsistent"):
+        MCQLLFormantsAdapter().prepare(
+            {
+                "adapter": "mcqll_formants",
+                "name": "mcqll_english",
+                "corpus": "ls_eng",
+                "language": "english",
+                "gold_root": gold_root,
+                "audio_root": audio_root,
+            }
+        )
+
+
+def test_every_exported_vowel_requires_finite_gold_inside_interval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gold_root, audio_root, frames = create_source_layout(tmp_path, corpus="ls_eng", batches=("batch1",))
+    tracks_path = gold_root / "batch1" / "tracks.parquet"
+    for formant in ("F1", "F2", "F3", "F4"):
+        frames[tracks_path][formant] = [None, None]
+    _patch_parquet(monkeypatch, frames)
+
+    with pytest.raises(DatasetValidationError, match="finite gold formant measurement inside its vowel interval"):
+        MCQLLFormantsAdapter().prepare(
+            {
+                "adapter": "mcqll_formants",
+                "name": "mcqll_english",
+                "corpus": "ls_eng",
+                "language": "english",
+                "gold_root": gold_root,
+                "audio_root": audio_root,
+            }
+        )
 
 
 def test_batch_selection_preserves_batch_as_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -80,11 +80,16 @@ For every selected batch, the adapter:
 4. treats each exported vowel token as one source-native benchmark item;
 5. maps the exporter's raw `F1`-`F4` columns directly to canonical benchmark
    `F1`-`F4` gold tracks; the smoothed `F1_s`-`F4_s` columns are not used as gold;
-6. converts timestamps and phone boundaries to item-relative seconds when needed;
-7. preserves a source phone interval and adds the corresponding derived vowel
+6. maps the FastTrack candidate time vector onto the prepared vowel interval: the
+   candidate's first timestamp is anchored to the vowel onset, its native frame
+   spacing is preserved, and no temporal scaling/interpolation is applied;
+7. validates that the candidate duration is consistent with the corrected vowel
+   duration and that every exported token has finite gold measurements inside its
+   vowel interval;
+8. preserves a source phone interval and adds the corresponding derived vowel
    interval;
-8. preserves `batch` as item metadata; and
-9. leaves `splits.parquet` empty because annotation batches are not experimental
+9. preserves `batch` as item metadata; and
+10. leaves `splits.parquet` empty because annotation batches are not experimental
    train/dev/test splits.
 
 Available formants are inferred from the non-missing raw gold values across

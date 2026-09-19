@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -26,6 +27,9 @@ from formant_benchmark.exceptions import ConfigurationError, DatasetValidationEr
 _SOURCE_FORMANT_COLUMNS = {formant: formant for formant in FORMANT_COLUMNS}
 _REQUIRED_EXPORT_FILES = ("tracks.parquet", "tokens.parquet", "export_manifest.json")
 _TIME_TOLERANCE_S = 1e-3
+_TRACK_DURATION_MIN_TOLERANCE_S = 5e-3
+_TRACK_DURATION_MAX_TOLERANCE_S = 1e-2
+_TRACK_DURATION_STEP_MULTIPLIER = 2.0
 
 
 class MCQLLFormantsConfig(BaseModel):
@@ -72,7 +76,7 @@ class MCQLLFormantsAdapter(DatasetAdapter):
     """
 
     name = "mcqll_formants"
-    version = "1"
+    version = "2"
 
     def prepare(self, config: Mapping[str, Any]) -> PreparedDataset:
         try:
@@ -136,6 +140,7 @@ class MCQLLFormantsAdapter(DatasetAdapter):
             "audio_root": str(audio_root),
             "source_export_schemas": source_schemas,
             "gold_columns": dict(_SOURCE_FORMANT_COLUMNS),
+            "track_time_mapping": "fasttrack_candidate_to_vowel_interval",
         }
         manifest = DatasetManifest(
             name=parsed.name,
@@ -242,7 +247,7 @@ def _prepare_batch(
 
     item_rows: list[dict[str, Any]] = []
     interval_rows: list[dict[str, Any]] = []
-    timing: dict[str, tuple[float, float | None]] = {}
+    timing: dict[str, tuple[float, float, float]] = {}
 
     for row in exported.to_dict(orient="records"):
         token_id = str(row["token_id"])
@@ -254,8 +259,6 @@ def _prepare_batch(
         clip_end = _optional_float(_nested_get(metadata, "intervals", "clip", "end"))
         if clip_begin is not None and clip_end is not None and clip_end <= clip_begin:
             raise DatasetValidationError(f"Invalid clip bounds for MCQLL token '{token_id}'.")
-        timing[token_id] = (duration_s, clip_begin)
-
         speaker = _optional_str(_nested_get(metadata, "speaker"))
         gender = _optional_str(_nested_get(metadata, "gender"))
         item_rows.append(
@@ -295,6 +298,7 @@ def _prepare_batch(
             clip_end=clip_end,
             token_id=token_id,
         )
+        timing[token_id] = (duration_s, start_s, end_s)
 
         linguistic = _as_mapping(metadata.get("linguistic"), "tokens.parquet.metadata.linguistic")
         phone = _optional_str(linguistic.get("phone"))
@@ -339,38 +343,131 @@ def _prepare_batch(
     normalized_track_frames: list[pd.DataFrame] = []
     for token_id, group in tracks.groupby("token_id", sort=False):
         item_id = str(token_id)
-        duration_s, clip_begin = timing[item_id]
+        _, vowel_start_s, vowel_end_s = timing[item_id]
         source_times = pd.to_numeric(group["time"], errors="coerce")
         if source_times.isna().any():
             raise DatasetValidationError(f"MCQLL track time contains non-numeric values for token '{item_id}'.")
-        time_s = _item_relative_track_times(source_times.astype(float), duration_s, clip_begin, item_id)
+        time_s = _item_relative_track_times(
+            source_times.astype(float),
+            vowel_start_s=vowel_start_s,
+            vowel_end_s=vowel_end_s,
+            token_id=item_id,
+        )
         normalized = pd.DataFrame({"item_id": item_id, "time_s": time_s})
         for formant, source_column in _SOURCE_FORMANT_COLUMNS.items():
             normalized[formant] = group[source_column].to_numpy(copy=True)
         normalized_track_frames.append(normalized)
 
-    return (
-        pd.DataFrame(item_rows),
-        pd.concat(normalized_track_frames, ignore_index=True),
-        pd.DataFrame(interval_rows),
-    )
+    items_df = pd.DataFrame(item_rows)
+    tracks_df = pd.concat(normalized_track_frames, ignore_index=True)
+    intervals_df = pd.DataFrame(interval_rows)
+    _validate_vowel_gold_alignment(tracks_df, intervals_df, batch=batch)
+
+    return items_df, tracks_df, intervals_df
 
 
 def _item_relative_track_times(
     times: pd.Series,
-    duration_s: float,
-    clip_begin: float | None,
+    *,
+    vowel_start_s: float,
+    vowel_end_s: float,
     token_id: str,
 ) -> pd.Series:
-    if ((times >= -_TIME_TOLERANCE_S) & (times <= duration_s + _TIME_TOLERANCE_S)).all():
-        return times.clip(lower=0.0, upper=duration_s)
-    if clip_begin is not None:
-        shifted = times - clip_begin
-        if ((shifted >= -_TIME_TOLERANCE_S) & (shifted <= duration_s + _TIME_TOLERANCE_S)).all():
-            return shifted.clip(lower=0.0, upper=duration_s)
-    raise DatasetValidationError(
-        f"MCQLL track times for token '{token_id}' cannot be mapped into the local audio item duration."
+    """Translate a FastTrack candidate time vector onto the prepared vowel interval.
+
+    ``formants-export`` preserves the selected candidate's native time vector.
+    Those times are relative to FastTrack's extracted vowel segment (typically
+    beginning near the analysis buffer), not to the larger MCQLL WAV clip. The
+    first candidate timestamp therefore corresponds to the vowel onset in the
+    prepared item. We preserve the candidate's native frame spacing and apply a
+    translation only; no interpolation or temporal scaling is performed.
+    """
+    if times.empty:
+        raise DatasetValidationError(f"MCQLL track is empty for token '{token_id}'.")
+    if not times.is_monotonic_increasing:
+        raise DatasetValidationError(
+            f"MCQLL FastTrack candidate times are not monotonic for token '{token_id}'."
+        )
+
+    raw_start = float(times.iloc[0])
+    raw_end = float(times.iloc[-1])
+    raw_span = raw_end - raw_start
+    vowel_duration = vowel_end_s - vowel_start_s
+    tolerance = _track_duration_tolerance(times)
+    if abs(raw_span - vowel_duration) > tolerance:
+        raise DatasetValidationError(
+            "MCQLL FastTrack candidate duration is inconsistent with the prepared vowel "
+            f"for token '{token_id}': candidate_span={raw_span:.6f}s, "
+            f"vowel_duration={vowel_duration:.6f}s, tolerance={tolerance:.6f}s."
+        )
+
+    shifted = times - raw_start + vowel_start_s
+    if (shifted < vowel_start_s - tolerance).any() or (shifted > vowel_end_s + tolerance).any():
+        raise DatasetValidationError(
+            f"MCQLL track times for token '{token_id}' cannot be aligned to its vowel interval."
+        )
+    return shifted.clip(lower=vowel_start_s, upper=vowel_end_s)
+
+
+def _track_duration_tolerance(times: pd.Series) -> float:
+    """Allow normal endpoint quantization from the candidate frame step."""
+    steps = times.diff().dropna()
+    positive_steps = steps[steps > 0]
+    if positive_steps.empty:
+        return _TRACK_DURATION_MIN_TOLERANCE_S
+    typical_step = float(positive_steps.median())
+    inferred = max(
+        _TRACK_DURATION_MIN_TOLERANCE_S,
+        _TRACK_DURATION_STEP_MULTIPLIER * typical_step + _TIME_TOLERANCE_S,
     )
+    return min(inferred, _TRACK_DURATION_MAX_TOLERANCE_S)
+
+
+def _validate_vowel_gold_alignment(
+    tracks: pd.DataFrame,
+    intervals: pd.DataFrame,
+    *,
+    batch: str,
+) -> None:
+    """Require every exported MCQLL token to have finite gold inside its vowel."""
+    vowels = intervals.loc[intervals["interval_type"] == IntervalType.VOWEL.value]
+    counts = vowels.groupby("item_id").size()
+    invalid_counts = counts[counts != 1]
+    if not invalid_counts.empty:
+        raise DatasetValidationError(
+            f"MCQLL batch '{batch}' requires exactly one vowel interval per exported token."
+        )
+
+    vowel_by_item = vowels.set_index("item_id")[["start_s", "end_s"]]
+    failed: list[str] = []
+    for item_id, group in tracks.groupby("item_id", sort=False):
+        item_key = str(item_id)
+        if item_key not in vowel_by_item.index:
+            failed.append(item_key)
+            continue
+        vowel = vowel_by_item.loc[item_key]
+        start_s = float(vowel["start_s"])
+        end_s = float(vowel["end_s"])
+        times = pd.to_numeric(group["time_s"], errors="coerce")
+        inside = (times >= start_s - _TIME_TOLERANCE_S) & (times <= end_s + _TIME_TOLERANCE_S)
+        if not inside.any():
+            failed.append(item_key)
+            continue
+
+        gold = group.loc[inside, list(FORMANT_COLUMNS)].apply(pd.to_numeric, errors="coerce")
+        if gold.empty or not np.isfinite(gold.to_numpy(dtype=float)).any():
+            failed.append(item_key)
+
+    expected_ids = set(vowels["item_id"].astype(str))
+    actual_ids = set(tracks["item_id"].astype(str))
+    failed.extend(sorted(expected_ids - actual_ids))
+    failed = sorted(set(failed))
+    if failed:
+        raise DatasetValidationError(
+            "MCQLL gold-track validation failed: every exported token must have at least "
+            f"one finite gold formant measurement inside its vowel interval. Batch '{batch}', "
+            f"failing token(s): {failed[:10]}"
+        )
 
 
 def _item_relative_bounds(

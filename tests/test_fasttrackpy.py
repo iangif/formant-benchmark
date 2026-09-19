@@ -17,6 +17,7 @@ from formant_benchmark.data.models import Formant, TrackingInputMode
 from formant_benchmark.exceptions import ConfigurationError
 from formant_benchmark.tracker_wrappers import fasttrackpy as wrapper
 from formant_benchmark.trackers.fasttrackpy import FASTTRACKPY_VERSION, FastTrackPyTracker
+from tests.integration_helpers import configured_real_tracker
 
 
 def test_fasttrackpy_capabilities_match_phase_7_scope() -> None:
@@ -242,24 +243,10 @@ heuristic = Heuristics()
     assert response["rows"][0]["F4"] == 3500.0
 
 
-def test_real_fasttrackpy_environment_when_configured(tmp_path: Path) -> None:
-    """Optional smoke test: set FASTTRACKPY_PYTHON to exercise the real 0.6.1 install."""
-    python = os.environ.get("FASTTRACKPY_PYTHON")
-    if not python:
-        pytest.skip("Set FASTTRACKPY_PYTHON to the isolated fasttrackpy==0.6.1 Python executable.")
-
+def test_real_fasttrackpy_environment_when_installed(tmp_path: Path) -> None:
+    """Run real FastTrackPy automatically when its configured optional install exists."""
     tracker = FastTrackPyTracker()
-    src_root = Path(__file__).resolve().parents[1] / "src"
-    config = {
-        "execution": {
-            "backend": "local",
-            "command": python,
-            "environment": {"PYTHONPATH": str(src_root)},
-        }
-    }
-    effective = {**tracker.default_configuration, **config}
-    check = tracker.check_environment(effective)
-    assert check["available"] is True, check
+    effective, backend, command = configured_real_tracker(tracker)
 
     audio = tmp_path / "vowel.wav"
     _write_voiced_wav(audio)
@@ -271,27 +258,23 @@ def test_real_fasttrackpy_environment_when_configured(tmp_path: Path) -> None:
         "input_unit_id": "real-smoke",
         "audio_path": str(audio),
         "duration_s": 0.2,
-        "parameters": dict(tracker.default_configuration["parameters"]),
+        "parameters": dict(effective["parameters"]),
         "metadata": {},
         "intervals": [],
     }
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(src_root)
-    command = [python, "-m", "formant_benchmark.tracker_wrappers.fasttrackpy", "--stream"]
-    completed = subprocess.run(
-        command,
-        env=environment,
-        input=json.dumps(request) + "\n" + json.dumps({"type": "shutdown"}) + "\n",
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
-    assert completed.returncode == 0, completed.stderr
-    response = json.loads(completed.stdout.splitlines()[0])
-    assert response["type"] == "result", response
-    assert response["rows"]
-    assert any(row.get("F1") is not None for row in response["rows"])
+
+    worker = backend.start_worker(command, tmp_path)
+    try:
+        result = worker.request(request, timeout_s=60)
+    finally:
+        worker.close()
+
+    assert result.returncode == 0, result.stderr
+    assert result.response is not None
+    assert result.response["type"] == "result", result.response
+    rows = result.response["rows"]
+    assert rows
+    assert any(row.get("F1") is not None for row in rows)
 
 
 def _write_voiced_wav(path: Path, sample_rate: int = 16000, duration_s: float = 0.2) -> None:

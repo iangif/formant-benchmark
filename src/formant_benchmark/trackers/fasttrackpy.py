@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 from formant_benchmark.data.models import Formant, TrackingInputMode
 from formant_benchmark.exceptions import ConfigurationError
-from formant_benchmark.execution.backends import backend_from_config
+from formant_benchmark.execution.backends import (
+    LocalExecutionBackend,
+    backend_from_config,
+)
 from formant_benchmark.trackers.base import TrackerAdapter, TrackerCapabilities
 
 FASTTRACKPY_VERSION = "0.6.1"
@@ -151,21 +153,16 @@ class FastTrackPyTracker(TrackerAdapter):
         if not result.get("available"):
             return result
 
-        execution = config.get("execution", {})
-        if not isinstance(execution, Mapping) or execution.get("backend", "local") != "local":
+        if not isinstance(backend, LocalExecutionBackend):
             result["package_check"] = "not_run_for_container_backend"
             return result
 
-        environment = os.environ.copy()
-        extra_environment = execution.get("environment", {})
-        if isinstance(extra_environment, Mapping):
-            environment.update({str(key): str(value) for key, value in extra_environment.items()})
-        working_directory = execution.get("working_directory")
+        resolved_command = backend.resolve_command(command)
         try:
             completed = subprocess.run(
-                [*command, "--check"],
-                cwd=working_directory,
-                env=environment,
+                [*resolved_command, "--check"],
+                cwd=backend.working_directory,
+                env=backend.process_environment(),
                 capture_output=True,
                 text=True,
                 timeout=30,
