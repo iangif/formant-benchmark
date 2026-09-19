@@ -79,7 +79,10 @@ def mcqll_source_frames(
     tracks = pd.DataFrame(
         {
             "token_id": [exported_id, exported_id],
-            "time": [0.05, 0.15],
+            # FastTrack candidate times are relative to the extracted vowel segment.
+            # The 25 ms initial offset represents the analysis buffer; the 80 ms
+            # candidate span matches the corrected 10.06-10.14 s vowel duration.
+            "time": [0.025, 0.105],
             "F1": [500.0, 510.0],
             "F2": [1500.0, 1510.0],
             "F3": [2500.0, 2510.0],

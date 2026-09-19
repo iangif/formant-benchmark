@@ -7,12 +7,13 @@ from formant_benchmark.trackers.base import (
     TrackingInput,
 )
 from formant_benchmark.trackers.fasttrackpy import FastTrackPyTracker
+from formant_benchmark.trackers.formants_tracker import FormantsTrackerTracker
 from formant_benchmark.trackers.synthetic import SyntheticTracker
 
 
 def register_builtin_trackers() -> None:
     """Register benchmark-provided trackers without replacing extensions."""
-    for tracker_type in (FastTrackPyTracker, SyntheticTracker):
+    for tracker_type in (FastTrackPyTracker, FormantsTrackerTracker, SyntheticTracker):
         if tracker_type.name not in TRACKER_REGISTRY.names():
             TRACKER_REGISTRY.register(tracker_type.name, tracker_type)
 
@@ -20,6 +21,7 @@ def register_builtin_trackers() -> None:
 __all__ = [
     "TRACKER_REGISTRY",
     "FastTrackPyTracker",
+    "FormantsTrackerTracker",
     "SyntheticTracker",
     "TrackerAdapter",
     "TrackerCapabilities",

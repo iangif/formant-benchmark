@@ -22,6 +22,7 @@ from formant_benchmark.data.models import (
     Formant,
     PredictionRun,
     PreparedDataset,
+    TrackingInputMode,
 )
 from formant_benchmark.evaluation.aggregation import aggregate_unit_metrics
 from formant_benchmark.evaluation.align import interpolate_formant
@@ -64,12 +65,13 @@ def evaluate(
         fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
     )
     selected_metrics = _resolve_metrics(metrics)
-    selected_formants = _resolve_formants(dataset, prediction_run, formants)
     effective_split, item_ids = _validate_compatibility_and_select_items(
         dataset,
         prediction_run,
+        scope=parsed_scope,
         split=split,
     )
+    selected_formants = _resolve_formants(dataset, prediction_run, formants)
     units = build_evaluation_units(
         dataset,
         scope=parsed_scope,
@@ -192,6 +194,7 @@ def _validate_compatibility_and_select_items(
     dataset: PreparedDataset,
     prediction_run: PredictionRun,
     *,
+    scope: EvaluationScope,
     split: str | None,
 ) -> tuple[str | None, set[str]]:
     fingerprint = dataset.manifest.fingerprint or dataset_fingerprint(dataset)
@@ -199,6 +202,16 @@ def _validate_compatibility_and_select_items(
         raise DatasetFingerprintMismatchError(
             "Prediction run was created from a different prepared dataset fingerprint: "
             f"run={prediction_run.manifest.dataset_fingerprint}, dataset={fingerprint}."
+        )
+    if (
+        prediction_run.manifest.input_mode is TrackingInputMode.CROPPED_INTERVALS
+        and scope is EvaluationScope.ALL
+    ):
+        interval_type = prediction_run.manifest.interval_type or "unspecified"
+        raise EvaluationCompatibilityError(
+            "Prediction run was generated from cropped intervals "
+            f"('{interval_type}') and cannot be evaluated with scope 'all'. "
+            "Use an interval-compatible evaluation scope or create a full_item prediction run."
         )
     if prediction_run.manifest.status != "completed":
         raise EvaluationCompatibilityError(

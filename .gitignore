@@ -11,6 +11,7 @@ prepared/
 runs/
 !src/formant_benchmark/runs/
 evaluations/
+external/
 
 z_dev_extra/
 zip_project.sh

@@ -199,15 +199,45 @@ class LocalExecutionBackend(ExecutionBackend):
         *,
         working_directory: str | Path | None = None,
         environment: Mapping[str, str] | None = None,
+        repository_root: str | Path | None = None,
     ) -> None:
-        self.working_directory = Path(working_directory).expanduser() if working_directory else None
-        self.environment = dict(environment or {})
+        self.repository_root = (
+            Path(repository_root).expanduser().resolve()
+            if repository_root is not None
+            else _benchmark_repository_root()
+        )
+        self.working_directory = _resolve_repository_path(
+            working_directory, self.repository_root
+        )
+        self.environment = _resolve_environment_paths(
+            environment or {}, self.repository_root
+        )
+
+    def resolve_command(self, command: Sequence[str]) -> tuple[str, ...]:
+        """Resolve an explicitly path-like executable from the benchmark root."""
+        if not command:
+            return ()
+        executable, *arguments = (str(part) for part in command)
+        if _looks_like_path(executable):
+            executable = str(
+                _resolve_repository_executable_path(executable, self.repository_root)
+            )
+        return (executable, *arguments)
+
+    def process_environment(self) -> dict[str, str]:
+        """Return the inherited process environment plus configured overrides."""
+        environment = os.environ.copy()
+        environment.update(self.environment)
+        return environment
 
     def check(self, command: Sequence[str]) -> dict[str, Any]:
-        executable = _resolve_executable(command)
+        resolved_command = self.resolve_command(command)
+        executable = _resolve_executable(resolved_command)
         problems: list[str] = []
         if executable is None:
-            problems.append(f"Executable not found: {command[0] if command else '<empty command>'}")
+            problems.append(
+                f"Executable not found: {resolved_command[0] if resolved_command else '<empty command>'}"
+            )
         if self.working_directory is not None and not self.working_directory.is_dir():
             problems.append(f"Working directory does not exist: {self.working_directory}")
         return {
@@ -222,12 +252,11 @@ class LocalExecutionBackend(ExecutionBackend):
         check = self.check(command)
         if not check["available"]:
             raise TrackerExecutionError("; ".join(check["problems"]))
-        environment = os.environ.copy()
-        environment.update(self.environment)
+        resolved_command = self.resolve_command(command)
         return ProcessExecutionWorker(
-            [*command, "--stream"],
+            [*resolved_command, "--stream"],
             cwd=self.working_directory,
-            environment=environment,
+            environment=self.process_environment(),
         )
 
 
@@ -304,6 +333,63 @@ def backend_from_config(config: Mapping[str, Any]) -> ExecutionBackend:
             image=str(execution.get("image", "")),
         )
     raise ConfigurationError(f"Unknown execution backend: '{backend}'.")
+
+
+def _benchmark_repository_root() -> Path:
+    """Return the source checkout root used for repository-relative tracker paths."""
+    return Path(__file__).resolve().parents[3]
+
+
+def _resolve_repository_path(
+    value: str | Path | None, repository_root: Path
+) -> Path | None:
+    """Resolve one configured path against the benchmark repository root."""
+    if value is None:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repository_root / path
+    return path.resolve()
+
+
+def _resolve_repository_executable_path(
+    value: str | Path, repository_root: Path
+) -> Path:
+    """Resolve an executable path without dereferencing virtualenv symlinks.
+
+    Python executables inside POSIX virtual environments are commonly symlinks to the
+    base interpreter. Calling ``Path.resolve()`` on them changes the executable path to
+    the base Python, which drops the virtual environment identity and can therefore
+    change the packages visible to the wrapper process.
+    """
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repository_root / path
+    return Path(os.path.abspath(path))
+
+
+def _resolve_environment_paths(
+    environment: Mapping[str, str], repository_root: Path
+) -> dict[str, str]:
+    """Resolve repository-relative path-list environment variables."""
+    resolved = {str(key): str(value) for key, value in environment.items()}
+    pythonpath = resolved.get("PYTHONPATH")
+    if pythonpath is None:
+        return resolved
+    entries: list[str] = []
+    for entry in pythonpath.split(os.pathsep):
+        if not entry:
+            entries.append(entry)
+            continue
+        entries.append(str(_resolve_repository_path(entry, repository_root)))
+    resolved["PYTHONPATH"] = os.pathsep.join(entries)
+    return resolved
+
+
+def _looks_like_path(value: str) -> bool:
+    """Distinguish explicit executable paths from bare PATH-resolved commands."""
+    path = Path(value).expanduser()
+    return path.is_absolute() or path.parent != Path(".") or value.startswith(".")
 
 
 def _resolve_executable(command: Sequence[str]) -> str | None:
