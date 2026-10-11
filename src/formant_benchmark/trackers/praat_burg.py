@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 from formant_benchmark.data.models import Formant, TrackingInputMode
 from formant_benchmark.exceptions import ConfigurationError
-from formant_benchmark.execution.backends import (
-    LocalExecutionBackend,
-    backend_from_config,
-)
 from formant_benchmark.trackers.base import TrackerAdapter, TrackerCapabilities
+from formant_benchmark.trackers.parameters import positive_float
+from formant_benchmark.trackers.python_wrapper import python_wrapper_command, run_wrapper_check
 
 PARSELMOUTH_VERSION = "0.4.7"
 # Parselmouth bundles a fixed Praat build; this is the one shipped with 0.4.7.
 PRAAT_VERSION = "6.1.38"
+_LABEL = "Praat Burg"
 
 _ALLOWED_PARAMETERS = {
     "time_step",
@@ -63,18 +60,12 @@ class PraatBurgTracker(TrackerAdapter):
 
     def wrapper_command(self, config: Mapping[str, Any]) -> Sequence[str]:
         """Return the configured tracker Python plus the benchmark wrapper module."""
-        execution = config.get("execution", {})
-        command = execution.get("command") if isinstance(execution, Mapping) else None
-        if isinstance(command, str) and command.strip():
-            prefix = (command,)
-        elif isinstance(command, Sequence) and not isinstance(command, (str, bytes)) and command:
-            prefix = tuple(str(part) for part in command)
-        else:
-            raise ConfigurationError(
-                "Praat Burg requires execution.command pointing to the Python executable "
-                f"inside its isolated praat-parselmouth=={PARSELMOUTH_VERSION} environment."
-            )
-        return (*prefix, "-m", "formant_benchmark.tracker_wrappers.praat_burg")
+        return python_wrapper_command(
+            config,
+            module="formant_benchmark.tracker_wrappers.praat_burg",
+            label=_LABEL,
+            environment=f"praat-parselmouth=={PARSELMOUTH_VERSION}",
+        )
 
     def validate_parameters(self, parameters: Mapping[str, Any]) -> None:
         """Reject unknown or structurally unsafe Burg parameters."""
@@ -83,79 +74,26 @@ class PraatBurgTracker(TrackerAdapter):
             raise ConfigurationError("Unsupported Praat Burg parameter(s): " + ", ".join(unknown))
 
         if parameters.get("time_step") is not None:
-            _positive_float(parameters, "time_step")
+            positive_float(parameters, "time_step", label=_LABEL)
         # Burg fits 2 * max_number_of_formants LPC poles, so Praat rounds this to the
         # nearest half; requiring a half-integer avoids silently analysing another value.
-        max_formants = _positive_float(parameters, "max_number_of_formants")
+        max_formants = positive_float(parameters, "max_number_of_formants", label=_LABEL)
         if (max_formants * 2) != int(max_formants * 2):
             raise ConfigurationError("Praat Burg max_number_of_formants must be a multiple of 0.5.")
-        _positive_float(parameters, "maximum_formant")
-        _positive_float(parameters, "window_length")
-        _positive_float(parameters, "pre_emphasis_from")
+        positive_float(parameters, "maximum_formant", label=_LABEL)
+        positive_float(parameters, "window_length", label=_LABEL)
+        positive_float(parameters, "pre_emphasis_from", label=_LABEL)
 
     def check_environment(self, config: Mapping[str, Any]) -> dict[str, Any]:
         """Check the runtime and confirm the isolated environment has Parselmouth 0.4.7."""
-        backend = backend_from_config(config)
-        command = tuple(self.wrapper_command(config))
-        result = backend.check(command)
-        result["tracker"] = self.name
-        result["required_parselmouth_version"] = PARSELMOUTH_VERSION
-        result["expected_praat_version"] = PRAAT_VERSION
-        if not result.get("available"):
-            return result
-
-        if not isinstance(backend, LocalExecutionBackend):
-            result["package_check"] = "not_run_for_container_backend"
-            return result
-
-        resolved_command = backend.resolve_command(command)
-        try:
-            completed = subprocess.run(
-                [*resolved_command, "--check"],
-                cwd=backend.working_directory,
-                env=backend.process_environment(),
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            result["available"] = False
-            result.setdefault("problems", []).append(f"Praat Burg wrapper check failed: {exc}")
-            return result
-
-        try:
-            details = json.loads(completed.stdout.strip()) if completed.stdout.strip() else {}
-        except json.JSONDecodeError:
-            details = {}
-        result["package_check"] = details
-        observed_version = details.get("parselmouth_version")
-        if observed_version is not None and observed_version != PARSELMOUTH_VERSION:
-            result["available"] = False
-            result.setdefault("problems", []).append(
-                "Parselmouth version mismatch: expected "
-                f"{PARSELMOUTH_VERSION}, found {observed_version}."
-            )
-        elif completed.returncode != 0:
-            result["available"] = False
-            message = (
-                details.get("error")
-                or completed.stderr.strip()
-                or completed.stdout.strip()
-                or "unknown wrapper check failure"
-            )
-            result.setdefault("problems", []).append(f"Praat Burg wrapper check failed: {message}")
-        return result
-
-
-def _positive_float(parameters: Mapping[str, Any], key: str) -> float:
-    value = parameters.get(key)
-    if isinstance(value, bool):
-        raise ConfigurationError(f"Praat Burg {key} must be a positive number.")
-    try:
-        numeric = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError) as exc:
-        raise ConfigurationError(f"Praat Burg {key} must be a positive number.") from exc
-    if not numeric > 0:
-        raise ConfigurationError(f"Praat Burg {key} must be a positive number.")
-    return numeric
+        return run_wrapper_check(
+            self,
+            config,
+            label="Parselmouth",
+            details={
+                "required_parselmouth_version": PARSELMOUTH_VERSION,
+                "expected_praat_version": PRAAT_VERSION,
+            },
+            version_key="parselmouth_version",
+            expected_version=PARSELMOUTH_VERSION,
+        )
