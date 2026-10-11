@@ -1,0 +1,20 @@
+tracker: praat_burg
+
+# Point this at the Python executable from the isolated environment created
+# according to docs/environments/praat_burg.md.
+# On Windows, change command to .venvs/praat_burg/Scripts/python.exe.
+execution:
+  backend: local
+  command: .venvs/praat_burg/bin/python
+  timeout_s: 120
+  checkpoint_every: 50
+
+# Praat's "Sound: To Formant (burg)..." defaults. time_step: null means Praat's
+# automatic step (25% of window_length). Speaker-dependent ceilings, e.g. 5000 Hz
+# for adult male voices, belong in dataset tracker_overrides or experiment YAML.
+parameters:
+  time_step: null
+  max_number_of_formants: 5.0
+  maximum_formant: 5500.0
+  window_length: 0.025
+  pre_emphasis_from: 50.0
