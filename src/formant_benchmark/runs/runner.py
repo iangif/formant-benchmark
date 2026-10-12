@@ -17,7 +17,7 @@ from typing import Any
 import pandas as pd
 from tqdm import tqdm
 
-from formant_benchmark.config.resolution import deep_merge, resolve_parameters
+from formant_benchmark.config.resolution import check_override_rules, deep_merge, resolve_parameters
 from formant_benchmark.data.models import (
     Formant,
     PredictionRun,
@@ -39,6 +39,51 @@ from formant_benchmark.execution.backends import ExecutionWorker, backend_from_c
 from formant_benchmark.runs.io import load_prediction_run, write_prediction_run
 from formant_benchmark.tracker_wrappers.protocol import normalize_wrapper_rows
 from formant_benchmark.trackers.base import TrackerAdapter, TrackingInput
+
+
+@dataclass(frozen=True, slots=True)
+class TrackingCondition:
+    """Everything that determines a run's predictions, plus its stable digest."""
+
+    configuration: dict[str, Any]
+    digest: str
+
+
+def tracking_condition(
+    *,
+    tracker: TrackerAdapter,
+    inputs: Sequence[TrackingInput],
+    tracker_config: Mapping[str, Any],
+    dataset_fingerprint: str,
+    input_mode: TrackingInputMode,
+    dataset_tracker_config: Mapping[str, Any] | None = None,
+    experiment_config: Mapping[str, Any] | None = None,
+    cli_parameters: Mapping[str, Any] | None = None,
+    interval_type: str | None = None,
+    interval_padding_s: float = 0.0,
+    split: str | None = None,
+) -> TrackingCondition:
+    """Describe one tracking condition and hash it into ``configuration_digest``.
+
+    Runs with equal digests used the same dataset, tracker, configuration layers,
+    input selection, and input mode. Explicit resume and experiment run reuse both
+    rely on this equality, so callers must pass only tracking-relevant settings.
+    """
+    configuration = {
+        "dataset_fingerprint": dataset_fingerprint,
+        "tracker": tracker.name,
+        "tracker_version": tracker.version,
+        "tracker_config": deep_merge(tracker.default_configuration, tracker_config),
+        "dataset_tracker_config": dict(dataset_tracker_config or {}),
+        "experiment_config": dict(experiment_config or {}),
+        "cli_parameters": dict(cli_parameters or {}),
+        "input_mode": input_mode.value,
+        "interval_type": interval_type,
+        "interval_padding_s": _normalize_interval_padding(input_mode, interval_padding_s),
+        "split": split,
+        "input_unit_ids": [value.input_unit_id for value in inputs],
+    }
+    return TrackingCondition(configuration, _digest(configuration))
 
 
 def execute_prediction_run(
@@ -77,21 +122,21 @@ def execute_prediction_run(
         default=None,
     )
 
-    compatibility = {
-        "dataset_fingerprint": dataset_fingerprint,
-        "tracker": tracker.name,
-        "tracker_version": tracker.version,
-        "tracker_config": effective_config,
-        "dataset_tracker_config": dict(dataset_tracker_config or {}),
-        "experiment_config": dict(experiment_config or {}),
-        "cli_parameters": dict(cli_parameters or {}),
-        "input_mode": input_mode.value,
-        "interval_type": interval_type,
-        "interval_padding_s": interval_padding_s,
-        "split": split,
-        "input_unit_ids": [value.input_unit_id for value in inputs],
-    }
-    digest = _digest(compatibility)
+    condition = tracking_condition(
+        tracker=tracker,
+        inputs=inputs,
+        tracker_config=tracker_config,
+        dataset_fingerprint=dataset_fingerprint,
+        input_mode=input_mode,
+        dataset_tracker_config=dataset_tracker_config,
+        experiment_config=experiment_config,
+        cli_parameters=cli_parameters,
+        interval_type=interval_type,
+        interval_padding_s=interval_padding_s,
+        split=split,
+    )
+    compatibility = condition.configuration
+    digest = condition.digest
 
     if len({value.input_unit_id for value in inputs}) != len(inputs):
         raise TrackerExecutionError("Tracking input_unit_id values must be unique within a run.")
@@ -101,6 +146,14 @@ def execute_prediction_run(
         dataset_tracker_config,
         experiment_config,
         {"parameters": dict(cli_parameters or {})},
+    )
+    warnings = check_override_rules(
+        [tracking_input.metadata for tracking_input in inputs],
+        {
+            "the tracker config": tracker_config,
+            "the dataset's tracker_overrides": dataset_tracker_config,
+            "the experiment config": experiment_config,
+        },
     )
     resolved_parameters: dict[str, dict[str, Any]] = {}
     for tracking_input in inputs:
@@ -121,6 +174,7 @@ def execute_prediction_run(
             )
         run.manifest.status = "running"
         run.manifest.completed_at = None
+        run.manifest.warnings = warnings
     else:
         manifest = PredictionRunManifest(
             run_id=root.name,
@@ -136,6 +190,7 @@ def execute_prediction_run(
             split=split,
             configuration_digest=digest,
             configuration=_redact_configuration(compatibility),
+            warnings=warnings,
             requested_inputs=len(inputs),
             created_at=_timestamp(),
         )

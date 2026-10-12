@@ -87,3 +87,7 @@ class EvaluationAlreadyExistsError(EvaluationError):
 
 class EvaluationValidationError(EvaluationError):
     """Raised when persisted evaluation artifacts are structurally invalid."""
+
+
+class ExperimentConflictError(FormantBenchmarkError):
+    """Raised when an experiment's output already exists from a different condition."""

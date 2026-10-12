@@ -23,7 +23,7 @@ _UNIT_IDENTITY_COLUMNS = (
     "region",
 )
 _UNIT_COUNT_COLUMNS = ("n_gold_measurements", "n_predicted_measurements")
-_AGGREGATE_IDENTITY_COLUMNS = ("grouping", "scope", "region", "n_evaluation_units")
+_AGGREGATE_IDENTITY_COLUMNS = ("scope", "region", "n_evaluation_units")
 
 
 def write_evaluation_result(
@@ -59,6 +59,15 @@ def write_evaluation_result(
         raise
     result.root = destination_path
     return result
+
+
+def read_evaluation_manifest(path: str | Path) -> EvaluationRunManifest:
+    """Read only an evaluation's manifest, e.g. to compare settings without loading metrics."""
+    manifest_path = Path(path) / "evaluation_manifest.yaml"
+    try:
+        return EvaluationRunManifest.model_validate(yaml.safe_load(manifest_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        raise EvaluationValidationError(f"Could not read evaluation manifest '{manifest_path}': {exc}") from exc
 
 
 def load_evaluation_result(path: str | Path) -> EvaluationResult:

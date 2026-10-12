@@ -48,7 +48,7 @@ def test_synthetic_trajectory_track_evaluate_persist_round_trip(tmp_path: Path) 
         cli_parameters={"frame_step_s": 0.1},
     )
 
-    result = evaluate(dataset, run, scope="all", group_by=[["gender"]], evaluation_id="exact")
+    result = evaluate(dataset, run, scope="all", evaluation_id="exact")
     assert result.evaluation_unit_metrics["rmse"].tolist() == pytest.approx([0.0, 0.0])
     assert result.evaluation_unit_metrics["coverage"].tolist() == pytest.approx([1.0, 1.0])
 

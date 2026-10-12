@@ -91,3 +91,45 @@ def _reject_equal_specificity_conflicts(
                         f"both set '{key}' at specificity {specificity}."
                     )
                 seen[key] = (value, rule_index)
+
+def check_override_rules(
+    metadata: Sequence[Mapping[str, Any]],
+    layers: Mapping[str, Mapping[str, Any] | None],
+) -> list[str]:
+    """Validate override ``where`` fields against the metadata of every tracking input.
+
+    Rules only match by equality, so a misspelled or nonexistent field would
+    otherwise silently never apply. A field that no input carries at all is a
+    configuration error. A rule whose fields exist but which matches no input is
+    returned as a warning, since the value may legitimately be absent from a split.
+    *layers* maps a human-readable layer name to that layer's configuration.
+    """
+    available = {key for values in metadata for key in values}
+    problems: list[str] = []
+    warnings: list[str] = []
+    for layer_name, layer in layers.items():
+        if not layer:
+            continue
+        overrides = layer.get("overrides", [])
+        if not isinstance(overrides, Sequence) or isinstance(overrides, (str, bytes)):
+            continue  # resolve_parameters reports the structural error.
+        for rule_index, rule in enumerate(overrides):
+            where = rule.get("where", {}) if isinstance(rule, Mapping) else {}
+            if not isinstance(where, Mapping):
+                continue
+            unknown = sorted(str(key) for key in where if key not in available)
+            if unknown:
+                problems.append(
+                    f"override {rule_index} in {layer_name} uses metadata field(s) "
+                    f"{', '.join(repr(key) for key in unknown)} that no tracking input has"
+                )
+            elif not any(all(values.get(key) == value for key, value in where.items()) for values in metadata):
+                condition = ", ".join(f"{key}={value!r}" for key, value in where.items())
+                warnings.append(f"override {rule_index} in {layer_name} ({condition}) matches no tracking input")
+    if problems:
+        raise ConfigurationError(
+            "Invalid parameter override(s):\n  "
+            + "\n  ".join(problems)
+            + f"\nAvailable metadata fields: {', '.join(sorted(available)) or '(none)'}."
+        )
+    return warnings

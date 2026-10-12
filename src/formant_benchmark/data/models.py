@@ -164,6 +164,8 @@ class PredictionRunManifest(BaseModel):
     split: str | None = None
     configuration_digest: str = Field(min_length=1)
     configuration: dict[str, Any] = Field(default_factory=dict)
+    # Summarized, non-fatal configuration findings such as override rules matching no input.
+    warnings: list[str] = Field(default_factory=list)
     requested_inputs: int = 0
     succeeded_inputs: int = 0
     failed_inputs: int = 0
@@ -214,12 +216,22 @@ class EvaluationRunManifest(BaseModel):
     fdr_absolute_threshold_hz: float = 300.0
     formant_aggregation: str = "arithmetic_mean_over_defined_selected_formants"
     unit_aggregation: str = "unweighted_arithmetic_mean_of_evaluation_unit_metrics"
-    group_by: list[list[str]] = Field(default_factory=list)
+    # Hash of the run and requested settings; absent in evaluations written before it existed.
+    settings_digest: str | None = None
     n_evaluation_units: int = 0
     n_units_with_numerical_metrics: int = 0
     created_at: str
     benchmark_version: str | None = None
     benchmark_commit: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_removed_group_by(cls, data: Any) -> Any:
+        # Built-in subgroup aggregation was removed; manifests written before that
+        # still carry group_by and must keep loading under extra="forbid".
+        if isinstance(data, dict) and "group_by" in data:
+            data = {key: value for key, value in data.items() if key != "group_by"}
+        return data
 
     @model_validator(mode="after")
     def validate_evaluation_settings(self) -> EvaluationRunManifest:
