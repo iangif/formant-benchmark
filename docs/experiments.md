@@ -40,6 +40,23 @@ count as different settings.
 Runs made earlier with `formant-benchmark track` are reused too when their
 condition matches.
 
+## Override rules are checked before tracking
+
+Every `where` field in the tracker config, the dataset's `tracker_overrides`, and the
+experiment's `tracking.overrides` must be a metadata field that at least one tracking
+input has; otherwise the command stops before tracking and lists the available fields.
+This catches typos such as `gendr`. A rule whose fields exist but which matches no
+input (for example `gender: Male` when the data uses `male`) does not stop the run;
+it is reported under `warnings` in the output and recorded in the run manifest.
+
+## Analysing results
+
+`evaluations/<name>/evaluation_unit_metrics.parquet` has one row per evaluation unit
+(vowel interval, item, or static measurement) with its metrics and metadata such as
+`gender`, `vowel`, and `speaker_id`. Subgroup breakdowns, weighting, and plots are
+done from that table in R, pandas, or any other tool. `aggregate_metrics.parquet`
+holds only one overall row per region: the unweighted mean over evaluation units.
+
 ## Options
 
 ```text

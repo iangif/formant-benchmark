@@ -17,7 +17,7 @@ from typing import Any
 import pandas as pd
 from tqdm import tqdm
 
-from formant_benchmark.config.resolution import deep_merge, resolve_parameters
+from formant_benchmark.config.resolution import check_override_rules, deep_merge, resolve_parameters
 from formant_benchmark.data.models import (
     Formant,
     PredictionRun,
@@ -147,6 +147,14 @@ def execute_prediction_run(
         experiment_config,
         {"parameters": dict(cli_parameters or {})},
     )
+    warnings = check_override_rules(
+        [tracking_input.metadata for tracking_input in inputs],
+        {
+            "the tracker config": tracker_config,
+            "the dataset's tracker_overrides": dataset_tracker_config,
+            "the experiment config": experiment_config,
+        },
+    )
     resolved_parameters: dict[str, dict[str, Any]] = {}
     for tracking_input in inputs:
         parameters = resolve_parameters(tracking_input.metadata, *parameter_layers)
@@ -166,6 +174,7 @@ def execute_prediction_run(
             )
         run.manifest.status = "running"
         run.manifest.completed_at = None
+        run.manifest.warnings = warnings
     else:
         manifest = PredictionRunManifest(
             run_id=root.name,
@@ -181,6 +190,7 @@ def execute_prediction_run(
             split=split,
             configuration_digest=digest,
             configuration=_redact_configuration(compatibility),
+            warnings=warnings,
             requested_inputs=len(inputs),
             created_at=_timestamp(),
         )

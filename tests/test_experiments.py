@@ -27,7 +27,7 @@ _EXPERIMENT = {
     "dataset": "synthetic_trajectory",
     "tracker": "synthetic",
     "tracking": {"input_mode": "full_item", "split": "train", "parameters": {"frame_step_s": 0.1}},
-    "evaluation": {"scope": "vowels", "group_by": ["gender,vowel"]},
+    "evaluation": {"scope": "vowels"},
 }
 
 
@@ -68,7 +68,6 @@ def test_experiment_config_defaults_and_validation(tmp_path: Path) -> None:
     assert experiment.name == "vowel_check"
     assert experiment.tracking.input_mode is TrackingInputMode.FULL_ITEM
     assert experiment.tracking.interval_padding_s == 0.0
-    assert experiment.evaluation.group_by == [["gender", "vowel"]]
     assert experiment.evaluation_split == "train"
     assert experiment.tracking.parameter_layer() == {"parameters": {"frame_step_s": 0.1}}
 
@@ -154,6 +153,23 @@ def test_unfinished_run_requires_explicit_resume(workspace: Path) -> None:
     outcome = _run("demo", resume=True)
     assert outcome.run_action == "resumed"
     assert read_prediction_run_manifest("runs/demo").status == "completed"
+
+
+def test_override_fields_are_checked_before_tracking(workspace: Path, capsys) -> None:
+    rule = {"where": {"gendr": "female"}, "parameters": {"offset_hz": 5.0}}
+    _write_experiment(workspace, "typo", tracking={"overrides": [rule]})
+    with pytest.raises(ConfigurationError, match="'gendr' that no tracking input has"):
+        _run("typo")
+    assert not Path("runs").exists()
+
+    rule = {"where": {"gender": "Female"}, "parameters": {"offset_hz": 5.0}}
+    _write_experiment(workspace, "nomatch", tracking={"overrides": [rule]})
+    assert main(["experiment", "run", "nomatch"]) == 0
+    tracking = yaml.safe_load(capsys.readouterr().out)["tracking"]
+    assert tracking["warnings"] == [
+        "override 0 in the experiment config (gender='Female') matches no tracking input"
+    ]
+    assert read_prediction_run_manifest("runs/nomatch").warnings == tracking["warnings"]
 
 
 def test_unimplemented_scope_fails_before_tracking(workspace: Path) -> None:

@@ -106,7 +106,7 @@ def test_interpolation_does_not_extrapolate_or_bridge_missing_samples() -> None:
     assert row["fdr_f1"] == pytest.approx(2 / 5)
 
 
-def test_central_vowel_region_and_joint_subgroups() -> None:
+def test_central_vowel_region_and_overall_aggregates() -> None:
     dataset = trajectory_dataset()
     dataset.intervals = pd.concat(
         [
@@ -133,7 +133,6 @@ def test_central_vowel_region_and_joint_subgroups() -> None:
         run,
         scope="vowels",
         central_region=0.5,
-        group_by=[["gender"], ["gender", "vowel"]],
     )
 
     assert len(result.evaluation_unit_metrics) == 4
@@ -141,8 +140,10 @@ def test_central_vowel_region_and_joint_subgroups() -> None:
     central = result.evaluation_unit_metrics.loc[result.evaluation_unit_metrics["region"] == "central_0.5"]
     assert set(central["n_gold_measurements"]) == {1}
     assert set(result.evaluation_unit_metrics["vowel"]) == {"iy", "aa"}
-    assert set(result.aggregate_metrics["grouping"]) == {"overall", "gender", "gender+vowel"}
-    assert len(result.aggregate_metrics.loc[result.aggregate_metrics["grouping"] == "gender+vowel"]) == 4
+    # One overall row per region; subgroup breakdowns are left to downstream analysis.
+    assert list(result.aggregate_metrics["region"]) == ["full", "central_0.5"]
+    assert list(result.aggregate_metrics["n_evaluation_units"]) == [2, 2]
+    assert {"gender", "vowel"} <= set(result.evaluation_unit_metrics.columns)
 
 
 def test_static_points_relative_positions_and_windows_are_evaluated_source_natively() -> None:
@@ -168,7 +169,6 @@ def test_static_points_relative_positions_and_windows_are_evaluated_source_nativ
         _prediction_run(dataset, predictions),
         scope="vowels",
         formants=["F1", "F2", "F3"],
-        group_by=[["measurement_kind"]],
     )
     rows_by_id = result.evaluation_unit_metrics.set_index("measurement_id")
 

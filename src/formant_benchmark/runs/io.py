@@ -85,7 +85,7 @@ def validate_prediction_run(run: PredictionRun) -> None:
 
 def inspect_prediction_run(run: PredictionRun) -> dict[str, object]:
     """Return a concise CLI summary."""
-    return {
+    summary: dict[str, object] = {
         "run_id": run.manifest.run_id,
         "status": run.manifest.status,
         "dataset": run.manifest.dataset_name,
@@ -100,6 +100,9 @@ def inspect_prediction_run(run: PredictionRun) -> dict[str, object]:
         "failed_inputs": run.manifest.failed_inputs,
         "prediction_rows": len(run.predictions),
     }
+    if run.manifest.warnings:
+        summary["warnings"] = list(run.manifest.warnings)
+    return summary
 
 
 def _require_columns(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:

@@ -23,7 +23,7 @@ _UNIT_IDENTITY_COLUMNS = (
     "region",
 )
 _UNIT_COUNT_COLUMNS = ("n_gold_measurements", "n_predicted_measurements")
-_AGGREGATE_IDENTITY_COLUMNS = ("grouping", "scope", "region", "n_evaluation_units")
+_AGGREGATE_IDENTITY_COLUMNS = ("scope", "region", "n_evaluation_units")
 
 
 def write_evaluation_result(

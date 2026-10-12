@@ -135,13 +135,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Centered fraction of each vowel interval, e.g. 0.5 for the central 50%%.",
     )
     evaluate_parser.add_argument(
-        "--group-by",
-        action="append",
-        default=[],
-        metavar="FIELD[,FIELD...]",
-        help="Metadata grouping; repeat for independent groupings and use commas for joint groupings.",
-    )
-    evaluate_parser.add_argument(
         "--fdr-relative-threshold",
         type=float,
         default=0.30,
@@ -297,7 +290,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 formants=args.formants,
                 metrics=args.metrics,
                 central_region=args.central_region,
-                group_by=_parse_group_by(args.group_by),
                 split=args.split,
                 fdr_relative_threshold=args.fdr_relative_threshold,
                 fdr_absolute_threshold_hz=args.fdr_absolute_threshold,
@@ -322,7 +314,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             summary = {
                 "experiment": experiment_config.name,
-                "tracking": {"run": str(outcome.run.root), "action": outcome.run_action},
+                "tracking": {
+                    "run": str(outcome.run.root),
+                    "action": outcome.run_action,
+                    **({"warnings": outcome.run.manifest.warnings} if outcome.run.manifest.warnings else {}),
+                },
                 "evaluation": {"output": str(outcome.evaluation.root), "action": outcome.evaluation_action},
                 **inspect_evaluation_result(outcome.evaluation),
             }
@@ -355,17 +351,3 @@ def _parse_parameters(values: list[str]) -> dict[str, object]:
             raise ConfigurationError(f"CLI parameter '{key}' was provided more than once.")
         result[key] = yaml.safe_load(raw)
     return result
-
-
-def _parse_group_by(values: list[str]) -> list[list[str]]:
-    groups: list[list[str]] = []
-    for raw in values:
-        fields = [field.strip() for field in raw.split(",") if field.strip()]
-        if not fields:
-            raise ConfigurationError("--group-by requires at least one metadata field.")
-        groups.append(fields)
-    return groups
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

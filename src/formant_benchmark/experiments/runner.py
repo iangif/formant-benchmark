@@ -204,7 +204,6 @@ def _evaluate(
         "formants": settings.formants,
         "metrics": settings.metrics,
         "central_region": settings.central_region,
-        "group_by": settings.group_by,
         "fdr_relative_threshold": settings.fdr_relative_threshold,
         "fdr_absolute_threshold_hz": settings.fdr_absolute_threshold_hz,
     }

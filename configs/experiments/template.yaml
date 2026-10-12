@@ -32,8 +32,5 @@ evaluation:
   # formants: [F1, F2, F3]        # default: formants available in both gold and predictions
   # metrics: [rmse, mae, avg, fdr, coverage]   # default: all five
   # central_region: 0.5           # evaluate only the centred fraction of each vowel
-  # group_by:                     # metadata groupings; "a,b" is a joint grouping
-  #   - gender
-  #   - gender,vowel
   # fdr_relative_threshold: 0.30
   # fdr_absolute_threshold_hz: 300.0

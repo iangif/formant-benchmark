@@ -46,7 +46,6 @@ def test_evaluate_cli_writes_wide_outputs_and_resolved_manifest(tmp_path: Path, 
         "--scope", "vowels",
         "--formants", "F1", "F2", "F3",
         "--central-region", "0.5",
-        "--group-by", "gender,vowel",
     ]) == 0
     stdout = capsys.readouterr().out
     assert "selected_formants:" in stdout

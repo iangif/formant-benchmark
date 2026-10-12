@@ -46,20 +46,8 @@ class EvaluationSettings(BaseModel):
     formants: list[Formant] | None = None
     metrics: list[str] | None = None
     central_region: float | None = None
-    group_by: list[list[str]] = Field(default_factory=list)
     fdr_relative_threshold: float = 0.30
     fdr_absolute_threshold_hz: float = 300.0
-
-    @field_validator("group_by", mode="before")
-    @classmethod
-    def _split_comma_groups(cls, value: Any) -> Any:
-        # Accept "gender,vowel" like the CLI's --group-by as well as [gender, vowel].
-        if not isinstance(value, list):
-            return value
-        return [
-            [field.strip() for field in entry.split(",") if field.strip()] if isinstance(entry, str) else entry
-            for entry in value
-        ]
 
 
 class ExperimentConfig(BaseModel):

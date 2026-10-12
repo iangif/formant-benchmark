@@ -53,7 +53,6 @@ def evaluate(
     formants: Sequence[str | Formant] | None = None,
     metrics: Sequence[str] | None = None,
     central_region: float | None = None,
-    group_by: Sequence[Sequence[str]] = (),
     split: str | None = None,
     fdr_relative_threshold: float = 0.30,
     fdr_absolute_threshold_hz: float = 300.0,
@@ -69,7 +68,6 @@ def evaluate(
         formants=formants,
         metrics=metrics,
         central_region=central_region,
-        group_by=group_by,
         fdr_relative_threshold=fdr_relative_threshold,
         fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
     )
@@ -103,11 +101,7 @@ def evaluate(
         fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
     )
     metric_columns = _metric_output_columns(selected_metrics)
-    aggregates = aggregate_unit_metrics(
-        detailed,
-        metric_columns=metric_columns,
-        group_by=group_by,
-    )
+    aggregates = aggregate_unit_metrics(detailed, metric_columns=metric_columns)
     numerical_columns = [column for column in metric_columns if column in detailed]
     numerical_units = 0
     if numerical_columns:
@@ -128,7 +122,6 @@ def evaluate(
         central_region=central_region,
         fdr_relative_threshold=fdr_relative_threshold,
         fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
-        group_by=[list(group) for group in group_by],
         settings_digest=settings_digest,
         n_evaluation_units=len(detailed),
         n_units_with_numerical_metrics=numerical_units,
@@ -148,7 +141,6 @@ def evaluation_settings_digest(
     formants: Sequence[str | Formant] | None = None,
     metrics: Sequence[str] | None = None,
     central_region: float | None = None,
-    group_by: Sequence[Sequence[str]] = (),
     fdr_relative_threshold: float = 0.30,
     fdr_absolute_threshold_hz: float = 300.0,
 ) -> str:
@@ -166,7 +158,6 @@ def evaluation_settings_digest(
         "formants": None if formants is None else [Formant(value).value for value in formants],
         "metrics": None if metrics is None else [str(value).lower() for value in metrics],
         "central_region": None if central_region is None else float(central_region),
-        "group_by": [[str(field) for field in group] for group in group_by],
         "fdr_relative_threshold": float(fdr_relative_threshold),
         "fdr_absolute_threshold_hz": float(fdr_absolute_threshold_hz),
     }
