@@ -10,6 +10,15 @@ from pathlib import Path
 
 import yaml
 
+from formant_benchmark.config.discovery import (
+    EVALUATIONS_ROOT,
+    PREPARED_ROOT,
+    RUNS_ROOT,
+    load_tracker_config,
+    resolve_config_file,
+    resolve_prepared_dataset,
+    timestamped_name,
+)
 from formant_benchmark.config.loading import load_yaml
 from formant_benchmark.data.io import inspect_prepared_dataset, load_prepared_dataset
 from formant_benchmark.data.models import EvaluationScope, Formant, TrackingInputMode
@@ -21,6 +30,7 @@ from formant_benchmark.exceptions import (
 )
 from formant_benchmark.execution.inputs import build_tracking_inputs
 from formant_benchmark.evaluation import evaluate, inspect_evaluation_result, write_evaluation_result
+from formant_benchmark.experiments import load_experiment_config, run_experiment
 from formant_benchmark.preparation.fingerprint import dataset_fingerprint
 from formant_benchmark.preparation.pipeline import prepare_dataset
 from formant_benchmark.runs.io import inspect_prediction_run, load_prediction_run
@@ -28,7 +38,7 @@ from formant_benchmark.trackers import TRACKER_REGISTRY, register_builtin_tracke
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build dataset and tracker CLI commands."""
+    """Build dataset, tracker, tracking, evaluation, and experiment CLI commands."""
     parser = argparse.ArgumentParser(prog="formant-benchmark")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -38,12 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
     dataset_commands.add_parser("list", help="List available dataset adapters.")
 
     prepare = dataset_commands.add_parser("prepare", help="Prepare a dataset from YAML configuration.")
-    prepare.add_argument("--config", required=True, type=Path, help="Dataset YAML configuration path.")
-    prepare.add_argument("--output", required=True, type=Path, help="Prepared dataset output directory.")
+    prepare.add_argument(
+        "--config", required=True, help="Dataset config name (configs/datasets/<name>.yaml) or path."
+    )
+    prepare.add_argument("--output", type=Path, help="Output directory (default: prepared/<dataset name>).")
     prepare.add_argument("--overwrite", action="store_true", help="Safely replace an existing prepared dataset.")
 
     inspect = dataset_commands.add_parser("inspect", help="Inspect a prepared dataset directory.")
-    inspect.add_argument("dataset", type=Path, help="Prepared dataset directory.")
+    inspect.add_argument("dataset", help="Prepared dataset name (prepared/<name>) or directory.")
 
     tracker = subcommands.add_parser("tracker", help="Inspect and check tracker integrations.")
     tracker_commands = tracker.add_subparsers(dest="tracker_command", required=True)
@@ -52,14 +64,19 @@ def build_parser() -> argparse.ArgumentParser:
     tracker_inspect.add_argument("tracker", help="Registered tracker name.")
     tracker_check = tracker_commands.add_parser("check", help="Check configured execution prerequisites.")
     tracker_check.add_argument("tracker", help="Registered tracker name.")
-    tracker_check.add_argument("--config", type=Path, help="Optional tracker YAML configuration.")
+    tracker_check.add_argument(
+        "--config", help="Tracker config name or path (default: configs/trackers/<tracker>.yaml)."
+    )
 
     track = subcommands.add_parser("track", help="Create or explicitly resume a PredictionRun.")
-    track.add_argument("--dataset", required=True, type=Path, help="Prepared dataset directory.")
+    track.add_argument("--dataset", required=True, help="Prepared dataset name (prepared/<name>) or directory.")
     track.add_argument("--tracker", required=True, help="Registered tracker name.")
-    track.add_argument("--tracker-config", type=Path, help="Tracker YAML configuration.")
-    track.add_argument("--experiment-config", type=Path, help="Experiment parameter/override YAML.")
-    track.add_argument("--output", required=True, type=Path, help="Prediction run output directory.")
+    track.add_argument(
+        "--tracker-config", help="Tracker config name or path (default: configs/trackers/<tracker>.yaml)."
+    )
+    track.add_argument(
+        "--output", type=Path, help="Prediction run directory (default: runs/<timestamp>-<dataset>-<tracker>)."
+    )
     track.add_argument(
         "--input-mode",
         required=True,
@@ -86,9 +103,13 @@ def build_parser() -> argparse.ArgumentParser:
     track.add_argument("--fail-fast", action="store_true", help="Stop after the first item-level failure.")
 
     evaluate_parser = subcommands.add_parser("evaluate", help="Evaluate a PredictionRun against prepared gold.")
-    evaluate_parser.add_argument("--dataset", required=True, type=Path, help="Prepared dataset directory.")
+    evaluate_parser.add_argument(
+        "--dataset", help="Prepared dataset name or directory (default: the run's dataset in prepared/)."
+    )
     evaluate_parser.add_argument("--predictions", required=True, type=Path, help="Prediction run directory.")
-    evaluate_parser.add_argument("--output", required=True, type=Path, help="Evaluation output directory.")
+    evaluate_parser.add_argument(
+        "--output", type=Path, help="Evaluation directory (default: evaluations/<timestamp>-<run>-<scope>)."
+    )
     evaluate_parser.add_argument(
         "--scope",
         required=True,
@@ -133,6 +154,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="FDR absolute-error threshold in Hz (default: 300).",
     )
     evaluate_parser.add_argument("--overwrite", action="store_true", help="Safely replace existing evaluation output.")
+
+    experiment = subcommands.add_parser("experiment", help="Run experiments described by YAML files.")
+    experiment_commands = experiment.add_subparsers(dest="experiment_command", required=True)
+    experiment_run = experiment_commands.add_parser(
+        "run",
+        help="Track (reusing matching predictions) into runs/<name>, then evaluate into evaluations/<name>.",
+    )
+    experiment_run.add_argument(
+        "experiment", help="Experiment name (configs/experiments/<name>.yaml) or path."
+    )
+    experiment_run.add_argument(
+        "--parameter",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Highest-precedence tracker parameter; repeat as needed.",
+    )
+    experiment_run.add_argument("--resume", action="store_true", help="Continue a matching unfinished run.")
+    experiment_run.add_argument(
+        "--overwrite", action="store_true", help="Replace an existing evaluation that used different settings."
+    )
+    experiment_run.add_argument("--fail-fast", action="store_true", help="Stop after the first item-level failure.")
     return parser
 
 
@@ -150,15 +193,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.command == "dataset" and args.dataset_command == "prepare":
-            config = load_yaml(args.config)
+            config = load_yaml(resolve_config_file(args.config, "datasets"))
             adapter_name = config.get("adapter")
             if not isinstance(adapter_name, str) or not adapter_name.strip():
                 raise ConfigurationError("Dataset configuration must define a non-empty 'adapter'.")
             adapter_type = DATASET_REGISTRY.get(adapter_name)
+            output = args.output
+            if output is None:
+                name = config.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    raise ConfigurationError("Dataset config has no 'name'; pass --output explicitly.")
+                output = PREPARED_ROOT / name
             prepared = prepare_dataset(
                 adapter_type(),
                 config,
-                args.output,
+                output,
                 overwrite=args.overwrite,
             )
             summary = inspect_prepared_dataset(prepared)
@@ -166,7 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.command == "dataset" and args.dataset_command == "inspect":
-            prepared = load_prepared_dataset(args.dataset)
+            prepared = load_prepared_dataset(resolve_prepared_dataset(args.dataset))
             print(yaml.safe_dump(inspect_prepared_dataset(prepared), sort_keys=False).rstrip())
             return 0
 
@@ -190,7 +239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "tracker" and args.tracker_command == "check":
             tracker = TRACKER_REGISTRY.get(args.tracker)()
-            config = _tracker_config(args.config, tracker.name)
+            config = load_tracker_config(args.config, tracker.name)
             effective = _merge_tracker_defaults(tracker.default_configuration, config)
             result = tracker.check_environment(effective)
             print(yaml.safe_dump(result, sort_keys=False).rstrip())
@@ -199,10 +248,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.command == "track":
-            prepared = load_prepared_dataset(args.dataset)
+            prepared = load_prepared_dataset(resolve_prepared_dataset(args.dataset))
             tracker = TRACKER_REGISTRY.get(args.tracker)()
-            tracker_config = _tracker_config(args.tracker_config, tracker.name)
-            experiment_config = load_yaml(args.experiment_config) if args.experiment_config else {}
+            tracker_config = load_tracker_config(args.tracker_config, tracker.name)
+            output = args.output or RUNS_ROOT / timestamped_name(prepared.manifest.name, tracker.name)
             cli_parameters = _parse_parameters(args.parameter)
             input_mode = TrackingInputMode(args.input_mode)
             with tempfile.TemporaryDirectory(prefix="formant-benchmark-inputs-") as temporary:
@@ -218,11 +267,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run = tracker.run(
                     inputs,
                     config=tracker_config,
-                    destination=args.output,
+                    destination=output,
                     dataset_fingerprint=prepared.manifest.fingerprint or dataset_fingerprint(prepared),
                     dataset_name=prepared.manifest.name,
                     dataset_tracker_config=prepared.manifest.tracker_overrides.get(tracker.name),
-                    experiment_config=experiment_config,
                     cli_parameters=cli_parameters,
                     input_mode=input_mode,
                     interval_type=args.interval_type,
@@ -236,8 +284,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.command == "evaluate":
-            prepared = load_prepared_dataset(args.dataset)
             prediction_run = load_prediction_run(args.predictions)
+            dataset_value = args.dataset or prediction_run.manifest.dataset_name
+            prepared = load_prepared_dataset(resolve_prepared_dataset(dataset_value))
+            output = args.output or EVALUATIONS_ROOT / timestamped_name(
+                prediction_run.manifest.run_id, args.scope
+            )
             result = evaluate(
                 prepared,
                 prediction_run,
@@ -249,10 +301,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                 split=args.split,
                 fdr_relative_threshold=args.fdr_relative_threshold,
                 fdr_absolute_threshold_hz=args.fdr_absolute_threshold,
-                evaluation_id=args.output.name,
+                evaluation_id=output.name,
             )
-            write_evaluation_result(result, args.output, overwrite=args.overwrite)
+            write_evaluation_result(result, output, overwrite=args.overwrite)
             print(yaml.safe_dump(inspect_evaluation_result(result), sort_keys=False).rstrip())
+            return 0
+        if args.command == "experiment" and args.experiment_command == "run":
+            experiment_config = load_experiment_config(resolve_config_file(args.experiment, "experiments"))
+            prepared = load_prepared_dataset(resolve_prepared_dataset(experiment_config.dataset))
+            tracker_config = load_tracker_config(experiment_config.tracker_config, experiment_config.tracker)
+            outcome = run_experiment(
+                experiment_config,
+                dataset=prepared,
+                tracker_config=tracker_config,
+                cli_parameters=_parse_parameters(args.parameter),
+                resume=args.resume,
+                overwrite=args.overwrite,
+                fail_fast=args.fail_fast,
+                show_progress=True,
+            )
+            summary = {
+                "experiment": experiment_config.name,
+                "tracking": {"run": str(outcome.run.root), "action": outcome.run_action},
+                "evaluation": {"output": str(outcome.evaluation.root), "action": outcome.evaluation_action},
+                **inspect_evaluation_result(outcome.evaluation),
+            }
+            print(yaml.safe_dump(summary, sort_keys=False).rstrip())
             return 0
     except FormantBenchmarkError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -260,16 +334,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser.error("Unsupported command.")
     return 2
-
-
-def _tracker_config(path: Path | None, tracker_name: str) -> dict[str, object]:
-    config = load_yaml(path) if path else {}
-    configured_name = config.get("tracker")
-    if configured_name is not None and configured_name != tracker_name:
-        raise ConfigurationError(
-            f"Tracker config declares '{configured_name}' but CLI selected '{tracker_name}'."
-        )
-    return config
 
 
 def _merge_tracker_defaults(defaults: object, config: dict[str, object]) -> dict[str, object]:

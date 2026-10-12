@@ -18,6 +18,8 @@ from formant_benchmark.data.schemas import (
 )
 from formant_benchmark.exceptions import PredictionRunValidationError
 
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 
 def write_prediction_run(run: PredictionRun, destination: str | Path) -> PredictionRun:
     """Checkpoint all four run artifacts using per-file atomic replacement."""
@@ -30,6 +32,17 @@ def write_prediction_run(run: PredictionRun, destination: str | Path) -> Predict
     _atomic_parquet(root / "item_parameters.parquet", run.item_parameters.loc[:, ITEM_PARAMETER_COLUMNS])
     run.root = root
     return run
+
+
+def read_prediction_run_manifest(path: str | Path) -> PredictionRunManifest:
+    """Read only a run's manifest, e.g. to compare digests without loading predictions."""
+    manifest_path = Path(path) / "run_manifest.yaml"
+    try:
+        # Manifests list every input unit id, so the C loader matters for large runs.
+        raw = yaml.load(manifest_path.read_text(encoding="utf-8"), Loader=_YAML_LOADER)
+        return PredictionRunManifest.model_validate(raw)
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        raise PredictionRunValidationError(f"Could not read run manifest '{manifest_path}': {exc}") from exc
 
 
 def load_prediction_run(path: str | Path) -> PredictionRun:

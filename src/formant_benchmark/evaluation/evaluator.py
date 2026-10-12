@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
@@ -59,6 +61,18 @@ def evaluate(
 ) -> EvaluationResult:
     """Evaluate one persisted prediction condition against one prepared dataset."""
     parsed_scope = require_implemented_scope(scope)
+    settings_digest = evaluation_settings_digest(
+        dataset_fingerprint=dataset.manifest.fingerprint or dataset_fingerprint(dataset),
+        prediction_run_digest=prediction_run.manifest.configuration_digest,
+        scope=scope,
+        split=split,
+        formants=formants,
+        metrics=metrics,
+        central_region=central_region,
+        group_by=group_by,
+        fdr_relative_threshold=fdr_relative_threshold,
+        fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
+    )
     _validate_numeric_options(
         central_region=central_region,
         fdr_relative_threshold=fdr_relative_threshold,
@@ -115,6 +129,7 @@ def evaluate(
         fdr_relative_threshold=fdr_relative_threshold,
         fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
         group_by=[list(group) for group in group_by],
+        settings_digest=settings_digest,
         n_evaluation_units=len(detailed),
         n_units_with_numerical_metrics=numerical_units,
         created_at=_timestamp(),
@@ -122,6 +137,41 @@ def evaluate(
         benchmark_commit=_benchmark_commit(),
     )
     return EvaluationResult(manifest, detailed, aggregates)
+
+
+def evaluation_settings_digest(
+    *,
+    dataset_fingerprint: str,
+    prediction_run_digest: str,
+    scope: str | EvaluationScope,
+    split: str | None = None,
+    formants: Sequence[str | Formant] | None = None,
+    metrics: Sequence[str] | None = None,
+    central_region: float | None = None,
+    group_by: Sequence[Sequence[str]] = (),
+    fdr_relative_threshold: float = 0.30,
+    fdr_absolute_threshold_hz: float = 300.0,
+) -> str:
+    """Hash the requested evaluation settings together with the gold and prediction identities.
+
+    Requested rather than resolved values are hashed, so a caller can tell before
+    scoring whether an existing evaluation used the same request. Omitting a value
+    and spelling out its default therefore count as different requests.
+    """
+    payload = {
+        "dataset_fingerprint": dataset_fingerprint,
+        "prediction_run_digest": prediction_run_digest,
+        "scope": EvaluationScope(scope).value,
+        "split": split,
+        "formants": None if formants is None else [Formant(value).value for value in formants],
+        "metrics": None if metrics is None else [str(value).lower() for value in metrics],
+        "central_region": None if central_region is None else float(central_region),
+        "group_by": [[str(field) for field in group] for group in group_by],
+        "fdr_relative_threshold": float(fdr_relative_threshold),
+        "fdr_absolute_threshold_hz": float(fdr_absolute_threshold_hz),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _validate_numeric_options(

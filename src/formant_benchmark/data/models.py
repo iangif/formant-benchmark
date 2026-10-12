@@ -215,6 +215,8 @@ class EvaluationRunManifest(BaseModel):
     formant_aggregation: str = "arithmetic_mean_over_defined_selected_formants"
     unit_aggregation: str = "unweighted_arithmetic_mean_of_evaluation_unit_metrics"
     group_by: list[list[str]] = Field(default_factory=list)
+    # Hash of the run and requested settings; absent in evaluations written before it existed.
+    settings_digest: str | None = None
     n_evaluation_units: int = 0
     n_units_with_numerical_metrics: int = 0
     created_at: str

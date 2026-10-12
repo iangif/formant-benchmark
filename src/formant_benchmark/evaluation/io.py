@@ -61,6 +61,15 @@ def write_evaluation_result(
     return result
 
 
+def read_evaluation_manifest(path: str | Path) -> EvaluationRunManifest:
+    """Read only an evaluation's manifest, e.g. to compare settings without loading metrics."""
+    manifest_path = Path(path) / "evaluation_manifest.yaml"
+    try:
+        return EvaluationRunManifest.model_validate(yaml.safe_load(manifest_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        raise EvaluationValidationError(f"Could not read evaluation manifest '{manifest_path}': {exc}") from exc
+
+
 def load_evaluation_result(path: str | Path) -> EvaluationResult:
     """Load and structurally validate a persisted evaluation result."""
     root = Path(path)

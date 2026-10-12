@@ -1,0 +1,39 @@
+# Experiment template. Copy to configs/experiments/<experiment_name>.yaml, edit, then run:
+#
+#   formant-benchmark experiment run <experiment_name>
+#
+# Tracking writes runs/<experiment_name> and evaluation writes evaluations/<experiment_name>.
+# If any completed run in runs/ has the same tracking condition, it is reused instead
+# of tracking again, so experiments that differ only in `evaluation` share predictions.
+# Commented-out lines show defaults.
+
+# name: <file name>           # used for runs/<name> and evaluations/<name>
+dataset: vtr                  # prepared/<name>, or a path to a prepared dataset
+tracker: praat_burg           # see: formant-benchmark tracker list
+# tracker_config: praat_burg  # configs/trackers/<name>.yaml or a path (default: the tracker's name)
+
+tracking:
+  input_mode: cropped_intervals   # full_item | cropped_intervals | full_item_with_intervals
+  interval_type: vowel            # required for cropped/interval-aware input
+  interval_padding_s: 0.035       # context added around each crop (default: 0)
+  # split: test                   # default: all items
+  # Tracker parameters; these override the tracker and dataset configs.
+  # parameters:
+  #   maximum_formant: 5500.0
+  # overrides:
+  #   - where:
+  #       gender: male
+  #     parameters:
+  #       maximum_formant: 5000.0
+
+evaluation:
+  scope: vowels                   # all | vowels
+  # split: test                   # default: the tracking split
+  # formants: [F1, F2, F3]        # default: formants available in both gold and predictions
+  # metrics: [rmse, mae, avg, fdr, coverage]   # default: all five
+  # central_region: 0.5           # evaluate only the centred fraction of each vowel
+  # group_by:                     # metadata groupings; "a,b" is a joint grouping
+  #   - gender
+  #   - gender,vowel
+  # fdr_relative_threshold: 0.30
+  # fdr_absolute_threshold_hz: 300.0
