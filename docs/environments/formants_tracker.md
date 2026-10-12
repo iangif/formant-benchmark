@@ -34,6 +34,10 @@ uv pip install --python .venvs/formants_tracker -r external/FormantsTracker/requ
 
 Do **not** install the benchmark's normal dependency set into this environment. The
 tracker process only needs the lightweight wrapper modules from this repository.
+Unlike the other tracker environments, this one cannot use an editable
+`--no-deps -e .` install because the benchmark package requires Python >= 3.11, so the
+config below puts the benchmark's `src/` on `PYTHONPATH` (resolved from the benchmark
+repository root, not the working directory) instead.
 
 The default tracker config already uses repository-relative paths:
 

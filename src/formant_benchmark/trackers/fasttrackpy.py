@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
 
 from formant_benchmark.data.models import Formant, TrackingInputMode
 from formant_benchmark.exceptions import ConfigurationError
-from formant_benchmark.execution.backends import (
-    LocalExecutionBackend,
-    backend_from_config,
-)
 from formant_benchmark.trackers.base import TrackerAdapter, TrackerCapabilities
+from formant_benchmark.trackers.parameters import nonnegative_float, positive_float, positive_int
+from formant_benchmark.trackers.python_wrapper import python_wrapper_command, run_wrapper_check
 
 FASTTRACKPY_VERSION = "0.6.1"
+_LABEL = "FastTrackPy"
 
 _ALLOWED_PARAMETERS = {
     "min_max_formant",
@@ -86,18 +83,12 @@ class FastTrackPyTracker(TrackerAdapter):
 
     def wrapper_command(self, config: Mapping[str, Any]) -> Sequence[str]:
         """Return the configured tracker Python plus the benchmark wrapper module."""
-        execution = config.get("execution", {})
-        command = execution.get("command") if isinstance(execution, Mapping) else None
-        if isinstance(command, str) and command.strip():
-            prefix = (command,)
-        elif isinstance(command, Sequence) and not isinstance(command, (str, bytes)) and command:
-            prefix = tuple(str(part) for part in command)
-        else:
-            raise ConfigurationError(
-                "FastTrackPy requires execution.command pointing to the Python executable "
-                "inside its isolated fasttrackpy==0.6.1 environment."
-            )
-        return (*prefix, "-m", "formant_benchmark.tracker_wrappers.fasttrackpy")
+        return python_wrapper_command(
+            config,
+            module="formant_benchmark.tracker_wrappers.fasttrackpy",
+            label=_LABEL,
+            environment=f"fasttrackpy=={FASTTRACKPY_VERSION}",
+        )
 
     def validate_parameters(self, parameters: Mapping[str, Any]) -> None:
         """Reject unknown or structurally unsafe FastTrackPy parameters."""
@@ -107,21 +98,21 @@ class FastTrackPyTracker(TrackerAdapter):
                 "Unsupported FastTrackPy parameter(s): " + ", ".join(unknown)
             )
 
-        minimum = _positive_float(parameters, "min_max_formant")
-        maximum = _positive_float(parameters, "max_max_formant")
+        minimum = positive_float(parameters, "min_max_formant", label=_LABEL)
+        maximum = positive_float(parameters, "max_max_formant", label=_LABEL)
         if maximum <= minimum:
             raise ConfigurationError("FastTrackPy max_max_formant must be greater than min_max_formant.")
-        _positive_int(parameters, "nstep")
-        n_formants = _positive_int(parameters, "n_formants")
+        positive_int(parameters, "nstep", label=_LABEL)
+        n_formants = positive_int(parameters, "n_formants", label=_LABEL)
         if n_formants > 4:
             raise ConfigurationError(
                 "FastTrackPy n_formants must be at most 4 because the benchmark canonical vocabulary is F1-F4."
             )
-        _positive_float(parameters, "window_length")
-        _positive_float(parameters, "time_step")
-        _nonnegative_float(parameters, "pre_emphasis_from")
-        _positive_float(parameters, "pitch_floor")
-        _positive_int(parameters, "smoother_order")
+        positive_float(parameters, "window_length", label=_LABEL)
+        positive_float(parameters, "time_step", label=_LABEL)
+        nonnegative_float(parameters, "pre_emphasis_from", label=_LABEL)
+        positive_float(parameters, "pitch_floor", label=_LABEL)
+        positive_int(parameters, "smoother_order", label=_LABEL)
 
         if parameters.get("smoother_method") not in _ALLOWED_SMOOTHERS:
             raise ConfigurationError(
@@ -145,80 +136,11 @@ class FastTrackPyTracker(TrackerAdapter):
 
     def check_environment(self, config: Mapping[str, Any]) -> dict[str, Any]:
         """Check the runtime and confirm the isolated environment has FastTrackPy 0.6.1."""
-        backend = backend_from_config(config)
-        command = tuple(self.wrapper_command(config))
-        result = backend.check(command)
-        result["tracker"] = self.name
-        result["required_fasttrackpy_version"] = FASTTRACKPY_VERSION
-        if not result.get("available"):
-            return result
-
-        if not isinstance(backend, LocalExecutionBackend):
-            result["package_check"] = "not_run_for_container_backend"
-            return result
-
-        resolved_command = backend.resolve_command(command)
-        try:
-            completed = subprocess.run(
-                [*resolved_command, "--check"],
-                cwd=backend.working_directory,
-                env=backend.process_environment(),
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            result["available"] = False
-            result.setdefault("problems", []).append(f"FastTrackPy wrapper check failed: {exc}")
-            return result
-
-        try:
-            details = json.loads(completed.stdout.strip()) if completed.stdout.strip() else {}
-        except json.JSONDecodeError:
-            details = {}
-        result["package_check"] = details
-        observed_version = details.get("fasttrackpy_version")
-        if observed_version is not None and observed_version != FASTTRACKPY_VERSION:
-            result["available"] = False
-            result.setdefault("problems", []).append(
-                "FastTrackPy version mismatch: expected "
-                f"{FASTTRACKPY_VERSION}, found {observed_version}."
-            )
-        elif completed.returncode != 0:
-            result["available"] = False
-            message = (
-                details.get("error")
-                or completed.stderr.strip()
-                or completed.stdout.strip()
-                or "unknown wrapper check failure"
-            )
-            result.setdefault("problems", []).append(f"FastTrackPy wrapper check failed: {message}")
-        return result
-
-
-def _positive_float(parameters: Mapping[str, Any], key: str) -> float:
-    try:
-        value = float(parameters[key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ConfigurationError(f"FastTrackPy {key} must be a positive number.") from exc
-    if value <= 0:
-        raise ConfigurationError(f"FastTrackPy {key} must be a positive number.")
-    return value
-
-
-def _nonnegative_float(parameters: Mapping[str, Any], key: str) -> float:
-    try:
-        value = float(parameters[key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ConfigurationError(f"FastTrackPy {key} must be a non-negative number.") from exc
-    if value < 0:
-        raise ConfigurationError(f"FastTrackPy {key} must be a non-negative number.")
-    return value
-
-
-def _positive_int(parameters: Mapping[str, Any], key: str) -> int:
-    value = parameters.get(key)
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ConfigurationError(f"FastTrackPy {key} must be a positive integer.")
-    return value
+        return run_wrapper_check(
+            self,
+            config,
+            label=_LABEL,
+            details={"required_fasttrackpy_version": FASTTRACKPY_VERSION},
+            version_key="fasttrackpy_version",
+            expected_version=FASTTRACKPY_VERSION,
+        )
