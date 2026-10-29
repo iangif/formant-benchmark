@@ -1,0 +1,23 @@
+# FastTrackPy on Hillenbrand et al. (1995) hVd words.
+#
+# Assumptions and caveats:
+# - Gold is static (steady state and 10%-80% points), not continuous tracks;
+#     predictions are sampled at those points.
+# - Gold has F1-F3 only, so F4 is never evaluated on this dataset.
+# - No splits: every item is used.
+# - FastTrackPy 0.6.1 defaults: it picks the formant ceiling itself between 4000
+#     and 7000 Hz, so no speaker-dependent overrides are set.
+# - Predictions are the smoothed trajectory of the winning candidate.
+# - Evaluation scores every formant present in both gold and predictions, so F4 is
+#     included where possible. For a like-for-like comparison across trackers,
+#     restrict the analysis to F1-F3.
+# - The whole vowel is scored (no central_region).
+
+dataset: hillenbrand
+tracker: fasttrackpy
+
+tracking:
+  input_mode: full_item           # each item is one hVd word recording
+
+evaluation:
+  scope: vowels

@@ -1,0 +1,38 @@
+# Praat Burg on VTR Formants (TIMIT utterances) vowel intervals, test split.
+#
+# Assumptions and caveats:
+# - Items are whole sentences, so each vowel is tracked as its own crop with 35 ms
+#     of context on each side; only predictions inside the vowel are kept.
+# - Only the test split (192 utterances) is used, for every tracker, so no tracker
+#     is scored on data it may have been trained on. The FormantsTracker
+#     checkpoint is believed not to be trained on VTR, but this is unconfirmed.
+# - Only F1-F3 were hand-corrected in VTR; F4 gold is the automatic track, so
+#     treat F4 results with caution.
+# - Formant ceilings are set per speaker group (see overrides); other parameters
+#     are Praat defaults from configs/trackers/praat_burg.yaml.
+# - Evaluation scores every formant present in both gold and predictions, so F4 is
+#     included where possible. For a like-for-like comparison across trackers,
+#     restrict the analysis to F1-F3.
+# - The whole vowel is scored (no central_region).
+
+dataset: vtr
+tracker: praat_burg
+
+tracking:
+  input_mode: cropped_intervals
+  interval_type: vowel
+  interval_padding_s: 0.035
+  split: test
+  # All speakers are adults.
+  overrides:
+    - where:
+        gender: male
+      parameters:
+        maximum_formant: 5000.0
+    - where:
+        gender: female
+      parameters:
+        maximum_formant: 5500.0
+
+evaluation:
+  scope: vowels

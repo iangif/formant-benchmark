@@ -1,0 +1,25 @@
+# FastTrackPy on MCQLL CSLT Uyghur (cslt_uig) vowel tokens.
+#
+# Assumptions and caveats:
+# - Gold tracks are hand-corrected FastTrack candidates, which gives FastTrackPy a
+#     home advantage. Keep this in mind when comparing it with other trackers.
+# - Gold is the exporter's raw F1-F4, not the smoothed F1_s-F4_s columns.
+# - Each item is a short clip around one vowel token; only the vowel interval is
+#     evaluated.
+# - Batches are not splits: every batch copied into data/raw is used.
+# - FastTrackPy 0.6.1 defaults: it picks the formant ceiling itself between 4000
+#     and 7000 Hz, so no speaker-dependent overrides are set.
+# - Predictions are the smoothed trajectory of the winning candidate.
+# - Evaluation scores every formant present in both gold and predictions, so F4 is
+#     included where possible. For a like-for-like comparison across trackers,
+#     restrict the analysis to F1-F3.
+# - The whole vowel is scored (no central_region).
+
+dataset: mcqll_uyghur
+tracker: fasttrackpy
+
+tracking:
+  input_mode: full_item           # each item is one vowel token
+
+evaluation:
+  scope: vowels
