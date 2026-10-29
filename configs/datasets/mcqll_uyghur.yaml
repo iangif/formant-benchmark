@@ -1,0 +1,7 @@
+adapter: mcqll_formants
+name: mcqll_uyghur
+corpus: cslt_uig
+language: uyghur
+gold_root: data/raw/mcqll/cslt_uig/gold_tracks
+audio_root: data/raw/mcqll/cslt_uig/source
+batches: all

@@ -1,0 +1,7 @@
+adapter: mcqll_formants
+name: mcqll_french
+corpus: gp_fra
+language: french
+gold_root: data/raw/mcqll/gp_fra/gold_tracks
+audio_root: data/raw/mcqll/gp_fra/source
+batches: all

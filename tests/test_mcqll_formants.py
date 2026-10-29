@@ -27,6 +27,8 @@ def _patch_parquet(monkeypatch: pytest.MonkeyPatch, frames: dict[Path, pd.DataFr
     [
         ("english", "ls_eng", "mcqll_english"),
         ("japanese", "gp_jpn", "mcqll_japanese"),
+        ("french", "gp_fra", "mcqll_french"),
+        ("uyghur", "cslt_uig", "mcqll_uyghur"),
     ],
 )
 def test_shared_adapter_prepares_each_language(

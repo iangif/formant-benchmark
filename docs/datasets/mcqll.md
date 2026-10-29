@@ -27,6 +27,8 @@ The current example configurations use:
 ```text
 English:  corpus = ls_eng
 Japanese: corpus = gp_jpn
+French:   corpus = gp_fra
+Uyghur:   corpus = cslt_uig
 ```
 
 ## Copying from oka
@@ -65,7 +67,8 @@ rsync -avm --include='/batch1/' --include='/batch2/' \
   USER@oka:/projects/xling-measures/data/ls_eng/ data/raw/mcqll/ls_eng/source/  
 ```
 
-Repeat with `gp_jpn` for Japanese. Replace `USER` with your oka username.
+Repeat with `gp_jpn` for Japanese, `gp_fra` for French, or `cslt_uig` for
+Uyghur. Replace `USER` with your oka username.
 
 The repository ignores `data/`, so data should remain local and
 must not be committed.
@@ -136,6 +139,9 @@ uv run formant-benchmark dataset prepare \
   --config configs/datasets/mcqll_japanese.yaml \
   --output prepared/mcqll_japanese
 ```
+
+French and Uyghur work the same way with `configs/datasets/mcqll_french.yaml`
+and `configs/datasets/mcqll_uyghur.yaml`.
 
 Inspect a prepared dataset with:
 
