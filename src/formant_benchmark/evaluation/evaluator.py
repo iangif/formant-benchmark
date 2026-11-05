@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from formant_benchmark.data.models import (
+    EVALUATION_SCHEMA_VERSION,
     AnnotationType,
     EvaluationResult,
     EvaluationRunManifest,
@@ -28,7 +29,9 @@ from formant_benchmark.data.models import (
 )
 from formant_benchmark.evaluation.aggregation import aggregate_unit_metrics
 from formant_benchmark.evaluation.align import interpolate_formant
+from formant_benchmark.evaluation.io import UNIT_VALUE_COLUMNS
 from formant_benchmark.evaluation.metrics import DEFAULT_METRICS, avg, coverage, fdr, mae, rmse
+from formant_benchmark.evaluation.metrics._common import matched_values
 from formant_benchmark.evaluation.scopes import require_implemented_scope
 from formant_benchmark.evaluation.static import static_prediction
 from formant_benchmark.evaluation.units import build_evaluation_units
@@ -151,6 +154,8 @@ def evaluation_settings_digest(
     and spelling out its default therefore count as different requests.
     """
     payload = {
+        # Output layout is part of the identity, so a schema change makes older evaluations stale.
+        "schema_version": EVALUATION_SCHEMA_VERSION,
         "dataset_fingerprint": dataset_fingerprint,
         "prediction_run_digest": prediction_run_digest,
         "scope": EvaluationScope(scope).value,
@@ -355,6 +360,7 @@ def _score_units(
                 fdr_absolute_threshold_hz=fdr_absolute_threshold_hz,
             )
         )
+        row.update(_values_row(gold, aligned, selected_formants=selected_formants))
         rows.append(row)
 
     frame = pd.DataFrame(rows)
@@ -369,8 +375,9 @@ def _score_units(
     ]
     metrics = _metric_output_columns(selected_metrics)
     counts = ["n_gold_measurements", "n_predicted_measurements"]
-    metadata = [column for column in frame.columns if column not in {*identity, *metrics, *counts}]
-    return frame.loc[:, [*identity, *metrics, *counts, *metadata]]
+    values = list(UNIT_VALUE_COLUMNS)
+    metadata = [column for column in frame.columns if column not in {*identity, *metrics, *counts, *values}]
+    return frame.loc[:, [*identity, *metrics, *counts, *values, *metadata]]
 
 
 def _trajectory_values(
@@ -465,6 +472,27 @@ def _metrics_row(
         else:
             row["n_gold_measurements"] = 0
             row["n_predicted_measurements"] = 0
+    return row
+
+
+def _values_row(
+    gold: dict[Formant, np.ndarray],
+    prediction: dict[Formant, np.ndarray],
+    *,
+    selected_formants: Sequence[Formant],
+) -> dict[str, float]:
+    """Mean gold and predicted values over matched positions, so avg == gold_mean - pred_mean."""
+    row: dict[str, float] = {}
+    for formant in _CANONICAL_FORMANTS:
+        suffix = formant.value.lower()
+        gold_mean = pred_mean = float("nan")
+        if formant in selected_formants:
+            gold_values, prediction_values = matched_values(gold[formant], prediction[formant])
+            if len(gold_values):
+                gold_mean = float(np.mean(gold_values))
+                pred_mean = float(np.mean(prediction_values))
+        row[f"gold_mean_{suffix}"] = gold_mean
+        row[f"pred_mean_{suffix}"] = pred_mean
     return row
 
 

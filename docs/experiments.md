@@ -53,7 +53,11 @@ it is reported under `warnings` in the output and recorded in the run manifest.
 
 `evaluations/<name>/evaluation_unit_metrics.parquet` has one row per evaluation unit
 (vowel interval, item, or static measurement) with its metrics and metadata such as
-`gender`, `vowel`, and `speaker_id`. Subgroup breakdowns, weighting, and plots are
+`gender`, `vowel`, and `speaker_id`. It also holds `gold_mean_<formant>` and
+`pred_mean_<formant>` (e.g. `gold_mean_f1`): the mean gold and predicted values over
+the positions where both exist, the same positions MAE, RMSE, and `avg` use, so
+`avg_f1 == gold_mean_f1 - pred_mean_f1`. For static gold these are the single gold
+and predicted values. Subgroup breakdowns, weighting, and plots are
 done from that table in R, pandas, or any other tool. `aggregate_metrics.parquet`
 holds only one overall row per region: the unweighted mean over evaluation units.
 

@@ -6,6 +6,8 @@ import pytest
 
 from formant_benchmark.data.models import TrackingInputMode
 from formant_benchmark.evaluation import evaluate, load_evaluation_result, write_evaluation_result
+from formant_benchmark.evaluation.io import UNIT_VALUE_COLUMNS
+from formant_benchmark.exceptions import EvaluationValidationError
 from formant_benchmark.execution.inputs import build_tracking_inputs
 from formant_benchmark.preparation.fingerprint import dataset_fingerprint
 from formant_benchmark.trackers.synthetic import SyntheticTracker
@@ -61,6 +63,22 @@ def test_synthetic_trajectory_track_evaluate_persist_round_trip(tmp_path: Path) 
         "evaluation_unit_metrics.parquet",
         "aggregate_metrics.parquet",
     }
+
+
+def test_schema_1_evaluations_without_value_columns_still_load(tmp_path: Path) -> None:
+    dataset = trajectory_dataset()
+    run = _track(dataset, tmp_path, cli_parameters={"frame_step_s": 0.1})
+    result = evaluate(dataset, run, scope="all")
+    result.manifest.schema_version = "1"
+    result.evaluation_unit_metrics = result.evaluation_unit_metrics.drop(columns=list(UNIT_VALUE_COLUMNS))
+
+    destination = tmp_path / "evaluation"
+    write_evaluation_result(result, destination)
+    assert load_evaluation_result(destination).manifest.schema_version == "1"
+
+    result.manifest.schema_version = "2"
+    with pytest.raises(EvaluationValidationError, match="gold_mean_f1"):
+        write_evaluation_result(result, tmp_path / "evaluation-v2")
 
 
 def test_synthetic_static_track_produces_known_point_and_window_metrics(tmp_path: Path) -> None:

@@ -23,6 +23,10 @@ _UNIT_IDENTITY_COLUMNS = (
     "region",
 )
 _UNIT_COUNT_COLUMNS = ("n_gold_measurements", "n_predicted_measurements")
+# Mean gold and predicted values over the matched positions that MAE/RMSE/avg use.
+UNIT_VALUE_COLUMNS = tuple(
+    f"{prefix}_{formant.value.lower()}" for prefix in ("gold_mean", "pred_mean") for formant in Formant
+)
 _AGGREGATE_IDENTITY_COLUMNS = ("scope", "region", "n_evaluation_units")
 
 
@@ -94,7 +98,13 @@ def validate_evaluation_result(result: EvaluationResult) -> None:
     detailed = result.evaluation_unit_metrics
     aggregate = result.aggregate_metrics
     metric_columns = _metric_columns(result.manifest.metrics)
-    _require_columns(detailed, (*_UNIT_IDENTITY_COLUMNS, *metric_columns, *_UNIT_COUNT_COLUMNS), "evaluation_unit_metrics.parquet")
+    # Schema 1 evaluations predate the value columns and stay loadable.
+    value_columns = () if result.manifest.schema_version == "1" else UNIT_VALUE_COLUMNS
+    _require_columns(
+        detailed,
+        (*_UNIT_IDENTITY_COLUMNS, *metric_columns, *_UNIT_COUNT_COLUMNS, *value_columns),
+        "evaluation_unit_metrics.parquet",
+    )
     _require_columns(aggregate, (*_AGGREGATE_IDENTITY_COLUMNS, *metric_columns), "aggregate_metrics.parquet")
     if detailed["evaluation_unit_id"].isna().any() or detailed["evaluation_unit_id"].duplicated().any():
         raise EvaluationValidationError("evaluation_unit_id values must be non-null and unique.")

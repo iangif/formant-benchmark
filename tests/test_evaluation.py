@@ -87,6 +87,24 @@ def test_all_scope_metrics_preserve_missing_prediction_semantics() -> None:
     assert row["rmse"] == pytest.approx((10.0 + 20.0 + 400.0 + 0.0) / 4.0)
 
 
+def test_unit_values_are_means_over_matched_positions() -> None:
+    dataset = trajectory_dataset()
+    predictions = dataset.tracks.copy()
+    predictions["F1"] += 10.0
+    predictions.loc[predictions["time_s"] == 0.2, "F2"] = np.nan
+
+    result = evaluate(dataset, _prediction_run(dataset, predictions), scope="all", formants=["F1", "F2"])
+    row = result.evaluation_unit_metrics.loc[result.evaluation_unit_metrics["item_id"] == "utt-1"].iloc[0]
+    gold = dataset.tracks.loc[dataset.tracks["item_id"] == "utt-1"]
+    gold_f2_matched = gold.loc[gold["time_s"] != 0.2, "F2"]
+
+    assert row["gold_mean_f1"] == pytest.approx(gold["F1"].mean())
+    assert row["pred_mean_f1"] == pytest.approx(gold["F1"].mean() + 10.0)
+    assert row["gold_mean_f2"] == pytest.approx(gold_f2_matched.mean())
+    assert row["gold_mean_f1"] - row["pred_mean_f1"] == pytest.approx(row["avg_f1"])
+    assert np.isnan(row["gold_mean_f3"]) and np.isnan(row["pred_mean_f3"])
+
+
 def test_interpolation_does_not_extrapolate_or_bridge_missing_samples() -> None:
     dataset = trajectory_dataset()
     predictions = dataset.tracks.loc[
@@ -175,6 +193,8 @@ def test_static_points_relative_positions_and_windows_are_evaluated_source_nativ
     assert rows_by_id.loc["m-1", "rmse_f1"] == pytest.approx(0.0)
     assert rows_by_id.loc["m-2", "rmse_f1"] == pytest.approx(10.0)
     assert rows_by_id.loc["m-2", "avg_f1"] == pytest.approx(10.0)
+    assert rows_by_id.loc["m-2", "pred_mean_f1"] == pytest.approx(700.0)
+    assert rows_by_id.loc["m-2", "gold_mean_f1"] == pytest.approx(710.0)
     assert rows_by_id.loc["m-3", "rmse_f1"] == pytest.approx(0.0)
     assert set(result.evaluation_unit_metrics["evaluation_unit_type"]) == {"static_measurement"}
     assert set(result.evaluation_unit_metrics["vowel"]) == {"ae", "iy"}
@@ -260,3 +280,12 @@ def test_evaluation_split_defaults_to_prediction_run_split_and_rejects_mismatch(
 
     with pytest.raises(EvaluationCompatibilityError, match="cannot be evaluated"):
         evaluate(dataset, run, scope="all", split="test")
+
+
+def test_settings_digest_changes_with_evaluation_schema_version(monkeypatch) -> None:
+    from formant_benchmark.evaluation import evaluator
+
+    settings = {"dataset_fingerprint": "gold", "prediction_run_digest": "run", "scope": "vowels"}
+    current = evaluator.evaluation_settings_digest(**settings)
+    monkeypatch.setattr(evaluator, "EVALUATION_SCHEMA_VERSION", "1")
+    assert evaluator.evaluation_settings_digest(**settings) != current

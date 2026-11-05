@@ -192,13 +192,17 @@ class PredictionRun:
     root: Path | None = None
 
 
+# Version 2 added per-unit gold_mean_<formant> and pred_mean_<formant> columns.
+EVALUATION_SCHEMA_VERSION = "2"
+
+
 class EvaluationRunManifest(BaseModel):
     """Resolved configuration and provenance for one evaluation result."""
 
     model_config = ConfigDict(extra="forbid")
 
     evaluation_id: str = Field(min_length=1)
-    schema_version: str = "1"
+    schema_version: str = EVALUATION_SCHEMA_VERSION
     dataset_name: str = Field(min_length=1)
     dataset_fingerprint: str = Field(min_length=1)
     prediction_run_id: str = Field(min_length=1)
