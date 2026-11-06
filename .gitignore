@@ -11,6 +11,7 @@ prepared/
 runs/
 !src/formant_benchmark/runs/
 evaluations/
+reports/
 external/
 
 z_dev_extra/
