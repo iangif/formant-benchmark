@@ -2,18 +2,15 @@
 #
 # Notes:
 # - Gold is static: steady state and 10%-80% points, at which predictions are sampled.
-# - Each vowel is tracked as its own crop with 25 ms of context on each side: the
-#     half-window Praat and FastTrackPy need to analyse the vowel's edges. More
-#     context degrades FastTrackPy, which fits its ceiling and smoothing to all the
-#     audio it is given.
+# - Unlike the other trackers, FormantsTracker is given the whole hVd recording, not
+#     a vowel crop. It is a CNN trained on whole utterances, and on short vowel crops
+#     a few percent of vowels fail outright (all formants far above gold).
 
 dataset: hillenbrand
 tracker: formants_tracker
 
 tracking:
-  input_mode: cropped_intervals
-  interval_type: vowel
-  interval_padding_s: 0.025
+  input_mode: full_item
 
 evaluation:
   scope: vowels

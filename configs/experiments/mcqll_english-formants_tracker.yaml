@@ -2,18 +2,16 @@
 #
 # Notes:
 # - Gold tracks are hand-corrected FastTrack candidates, which may favour FastTrackPy.
-# - Each vowel is tracked as its own crop with 25 ms of context on each side: the
-#     half-window Praat and FastTrackPy need to analyse the vowel's edges. More
-#     context degrades FastTrackPy, which fits its ceiling and smoothing to all the
-#     audio it is given.
+# - Unlike the other trackers, FormantsTracker is given the whole clip around the
+#     vowel (about 0.85 s), not a vowel crop. It is a CNN trained on whole utterances,
+#     and on short vowel crops a few percent of vowels fail outright (all formants far
+#     above gold).
 
 dataset: mcqll_english
 tracker: formants_tracker
 
 tracking:
-  input_mode: cropped_intervals
-  interval_type: vowel
-  interval_padding_s: 0.025
+  input_mode: full_item
 
 evaluation:
   scope: vowels
