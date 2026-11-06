@@ -185,6 +185,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the position-in-vowel figure, which re-aligns every prediction and takes longer.",
     )
+
+    examples = subcommands.add_parser(
+        "examples",
+        help="Plot example vowels with gold and predicted tracks into one PDF per dataset (needs the 'analysis' extra).",
+    )
+    examples.add_argument("--evaluations", type=Path, default=EVALUATIONS_ROOT, help="Evaluations directory.")
+    examples.add_argument("--prepared", type=Path, default=PREPARED_ROOT, help="Prepared datasets directory.")
+    examples.add_argument("--runs", type=Path, default=RUNS_ROOT, help="Prediction runs directory.")
+    examples.add_argument(
+        "--output", type=Path, default=Path("reports/examples"), help="Output directory (default: reports/examples)."
+    )
+    examples.add_argument(
+        "--dataset", action="append", dest="datasets", help="Only this dataset; repeat as needed (default: all)."
+    )
+    examples.add_argument("--count", type=int, default=20, help="Vowels per section (default: 20, one page).")
+    examples.add_argument("--seed", type=int, default=0, help="Seed for the random section (default: 0).")
+    examples.add_argument(
+        "--spectrograms",
+        choices=("all", "worst", "none"),
+        default="all",
+        help="Where to draw spectrograms behind the tracks: every section (default), worst-vowel sections, or none.",
+    )
     return parser
 
 
@@ -354,6 +376,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output=args.output,
                 formats=args.formats or ("png", "pdf"),
                 include_positions=not args.skip_positions,
+            )
+            print(yaml.safe_dump({"written": [str(path) for path in written]}, sort_keys=False).rstrip())
+            return 0
+        if args.command == "examples":
+            try:
+                from formant_benchmark.analysis.examples import write_examples
+            except ImportError as exc:
+                raise ConfigurationError(
+                    f"Plotting needs the 'analysis' extra ({exc}); run `uv sync --extra analysis`."
+                ) from exc
+            if args.count < 1:
+                raise ConfigurationError("--count must be at least 1.")
+            written = write_examples(
+                evaluations_root=args.evaluations,
+                prepared_root=args.prepared,
+                runs_root=args.runs,
+                output=args.output,
+                count=args.count,
+                seed=args.seed,
+                spectrograms=args.spectrograms,
+                datasets=args.datasets,
             )
             print(yaml.safe_dump({"written": [str(path) for path in written]}, sort_keys=False).rstrip())
             return 0

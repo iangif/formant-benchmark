@@ -80,6 +80,31 @@ evaluator does it and put into 10% bins of the vowel. Hillenbrand keeps its own
 `--skip-positions` leaves it out. The functions in `formant_benchmark.analysis`
 return the same tables for your own plots.
 
+## Example tracks
+
+`formant-benchmark examples` draws individual vowels so the numbers can be checked by
+eye. It writes `reports/examples/examples_<dataset>.pdf`. Each panel is one vowel, with
+gold in black (points for Hillenbrand), each tracker in its usual colour and line style,
+dotted lines at the vowel boundaries, and each tracker's MAE for that vowel in the title.
+A vowel's MAE is its mean over F1-F3 (and over its measurement points for Hillenbrand).
+Each PDF has one page of 20 vowels per section:
+
+| Section | Vowels |
+|---|---|
+| Random | a seeded random sample, for typical behaviour |
+| Worst *tracker* | the highest MAE for that tracker, one section per tracker |
+| Disagreement | where the trackers' mean predictions differ most |
+
+Every panel has a wideband spectrogram behind the tracks, so you can see whether the
+tracker or the gold is off; `--spectrograms worst` keeps it to the worst-vowel sections
+and `none` leaves it out. Predictions outside the vowel are faded: they are not
+evaluated, and in VTR, where vowels in an utterance can touch, they may belong to the
+neighbouring vowel's crop.
+`examples_<dataset>.csv` lists every panel in page order with its full ids and MAEs,
+because panel titles shorten long item ids. Other options: `--dataset` (repeatable),
+`--count` (vowels per section, default 20), and `--seed`. All six datasets take about
+a minute.
+
 ## Options
 
 ```text

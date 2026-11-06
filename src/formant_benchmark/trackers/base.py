@@ -40,6 +40,10 @@ class TrackingInput:
     intervals: tuple[Mapping[str, Any], ...] = ()
     target_start_s: float | None = None
     target_end_s: float | None = None
+    # How far a cropped input's predictions may reach past its target interval:
+    # the midpoint to the neighbouring interval in the same item, or the item edge.
+    edge_limit_start_s: float | None = None
+    edge_limit_end_s: float | None = None
 
 
 class TrackerAdapter(ABC):

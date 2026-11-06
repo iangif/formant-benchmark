@@ -6,6 +6,7 @@ import json
 import wave
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from formant_benchmark.data.models import TrackingInputMode
@@ -357,7 +358,7 @@ def test_interval_padding_is_clamped_to_item_boundaries(tmp_path: Path) -> None:
     assert tracking_input.duration_s == pytest.approx(0.4)
 
 
-def test_padded_predictions_are_trimmed_back_to_original_interval(tmp_path: Path) -> None:
+def test_padded_predictions_keep_one_frame_past_each_interval_edge(tmp_path: Path) -> None:
     dataset = trajectory_dataset()
     audio = tmp_path / "utt-1.wav"
     _write_wav(audio, duration_s=0.4)
@@ -381,11 +382,13 @@ def test_padded_predictions_are_trimmed_back_to_original_interval(tmp_path: Path
         interval_type="vowel",
         interval_padding_s=0.05,
         split="train",
-        cli_parameters={"frame_step_s": 0.05},
+        cli_parameters={"frame_step_s": 0.03},
     )
 
     assert run.manifest.interval_padding_s == pytest.approx(0.05)
-    assert run.predictions["time_s"].tolist() == pytest.approx([0.1, 0.15, 0.2, 0.25, 0.3])
+    # The crop starts at 0.05 s, so its frames miss the 0.1-0.3 s vowel's edges;
+    # 0.08 and 0.32 s are kept so the edges can be interpolated.
+    assert run.predictions["time_s"].tolist() == pytest.approx([0.08, 0.11, 0.14, 0.17, 0.2, 0.23, 0.26, 0.29, 0.32])
     with pytest.raises(ResumeCompatibilityError):
         _run(
             dataset,
@@ -399,6 +402,36 @@ def test_padded_predictions_are_trimmed_back_to_original_interval(tmp_path: Path
             cli_parameters={"frame_step_s": 0.05},
             resume=True,
         )
+
+
+def test_edge_frames_stop_short_of_the_midpoint_to_a_neighbouring_interval(tmp_path: Path) -> None:
+    dataset = trajectory_dataset()
+    audio = tmp_path / "utt-1.wav"
+    _write_wav(audio, duration_s=0.4)
+    dataset.items.loc[dataset.items["item_id"] == "utt-1", "audio_path"] = str(audio)
+    vowels = dataset.intervals.loc[dataset.intervals["interval_id"] == "utt-1:v1"]
+    second = vowels.assign(interval_id="utt-1:v2", start_s=0.24, end_s=0.3)
+    dataset.intervals.loc[dataset.intervals["interval_id"] == "utt-1:v1", "end_s"] = 0.2
+    dataset.intervals = pd.concat([dataset.intervals, second], ignore_index=True)
+
+    inputs = _inputs(
+        dataset,
+        SyntheticTracker(),
+        tmp_path,
+        mode=TrackingInputMode.CROPPED_INTERVALS,
+        interval_type="vowel",
+        interval_padding_s=0.05,
+        split="train",
+    )
+    first, second_input = inputs
+    assert (first.edge_limit_start_s, first.edge_limit_end_s) == pytest.approx((0.0, 0.22))
+    assert (second_input.edge_limit_start_s, second_input.edge_limit_end_s) == pytest.approx((0.22, 0.4))
+
+    times = [0.15, 0.19, 0.21, 0.23, 0.25]
+    prediction = pd.DataFrame({"time_s": times, "F1": [500.0] * len(times)})
+    # The first vowel takes 0.21 s; 0.23 s is past the midpoint, so it is left to the second.
+    assert runner_module._restrict_to_target(prediction, first)["time_s"].tolist() == pytest.approx([0.15, 0.19, 0.21])
+    assert runner_module._restrict_to_target(prediction, second_input)["time_s"].tolist() == pytest.approx([0.23, 0.25])
 
 
 @pytest.mark.parametrize("padding", [-0.001, float("inf")])

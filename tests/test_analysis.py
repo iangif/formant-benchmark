@@ -130,3 +130,79 @@ def test_report_cli(workspace: Path, capsys) -> None:
     assert (workspace / "cli-report" / "heatmap_mae.png").is_file()
     assert not (workspace / "cli-report" / "position_mae.png").exists()
     assert "summary.csv" in capsys.readouterr().out
+
+
+def test_examples_write_a_pdf_and_listing_per_dataset(workspace: Path) -> None:
+    pytest.importorskip("matplotlib")
+    from formant_benchmark.analysis.examples import write_examples
+
+    written = write_examples(
+        evaluations_root=workspace / "evaluations",
+        prepared_root=workspace / "prepared",
+        runs_root=workspace / "runs",
+        output=workspace / "examples",
+        count=5,
+    )
+
+    names = {path.name for path in written}
+    assert names == {
+        "examples_synthetic_trajectory.pdf", "examples_synthetic_trajectory.csv",
+        "examples_synthetic_static.pdf", "examples_synthetic_static.csv",
+    }
+    listing = pd.read_csv(workspace / "examples" / "examples_synthetic_trajectory.csv")
+    # One tracker per fixture dataset: random, worst for that tracker, no disagreement section.
+    assert listing["section"].unique().tolist() == ["Random", "Worst synthetic"]
+    # The fixture's predictions are 10 Hz off on F1 only, so the F1-F3 mean is 10 / 3.
+    assert listing["mae_synthetic"].tolist() == pytest.approx([10 / 3, 10 / 3])
+
+
+def test_examples_draw_a_spectrogram_from_the_wav(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    import wave
+
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import QuadMesh
+
+    from formant_benchmark.analysis.examples import _draw_spectrogram
+
+    rate = 16000
+    tone = (8000 * np.sin(2 * np.pi * 500 * np.arange(rate // 2) / rate)).astype(np.int16)
+    audio = tmp_path / "tone.wav"
+    with wave.open(str(audio), "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(rate)
+        writer.writeframes(tone.tobytes())
+
+    fig, ax = plt.subplots()
+    _draw_spectrogram(ax, audio, (0.1, 0.3), 0.15, top=4000.0)
+    _draw_spectrogram(ax, tmp_path / "missing.wav", (0.1, 0.3), 0.15, top=4000.0)
+    meshes = [child for child in ax.get_children() if isinstance(child, QuadMesh)]
+    assert len(meshes) == 1
+    # Times are in ms from the vowel start, so the 0.1-0.3 s window spans about -50 to 150 ms.
+    left, right = ax.get_xlim()
+    assert -50 <= left < -40 and 140 < right <= 150
+    plt.close(fig)
+
+
+def test_examples_cli(workspace: Path, capsys) -> None:
+    pytest.importorskip("matplotlib")
+    from formant_benchmark.cli.main import main
+
+    code = main(
+        [
+            "examples",
+            "--evaluations", str(workspace / "evaluations"),
+            "--prepared", str(workspace / "prepared"),
+            "--runs", str(workspace / "runs"),
+            "--output", str(workspace / "cli-examples"),
+            "--dataset", "synthetic_static",
+            "--count", "3",
+            "--spectrograms", "none",
+        ]
+    )
+
+    assert code == 0
+    assert (workspace / "cli-examples" / "examples_synthetic_static.pdf").is_file()
+    assert not (workspace / "cli-examples" / "examples_synthetic_trajectory.pdf").exists()
+    assert "examples_synthetic_static.csv" in capsys.readouterr().out

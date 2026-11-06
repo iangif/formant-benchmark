@@ -72,9 +72,12 @@ def build_tracking_inputs(
         audio_path = _resolve_audio_path(item.get("audio_path"), dataset.root)
         item_intervals = by_item.get(item_id, empty_item_intervals)
         if input_mode is TrackingInputMode.CROPPED_INTERVALS:
-            for interval in item_intervals.sort_values(["start_s", "interval_id"], kind="stable").to_dict(orient="records"):
+            ordered = item_intervals.sort_values(["start_s", "interval_id"], kind="stable").to_dict(orient="records")
+            for position, interval in enumerate(ordered):
                 start_s = float(interval["start_s"])
                 end_s = float(interval["end_s"])
+                previous_end_s = float(ordered[position - 1]["end_s"]) if position > 0 else None
+                next_start_s = float(ordered[position + 1]["start_s"]) if position + 1 < len(ordered) else None
                 crop_start_s = max(0.0, start_s - interval_padding_s)
                 crop_end_s = min(duration_s, end_s + interval_padding_s)
                 input_unit_id = str(interval["interval_id"])
@@ -91,6 +94,8 @@ def build_tracking_inputs(
                         metadata=_metadata(item, interval),
                         target_start_s=start_s,
                         target_end_s=end_s,
+                        edge_limit_start_s=0.0 if previous_end_s is None else (previous_end_s + start_s) / 2,
+                        edge_limit_end_s=duration_s if next_start_s is None else (end_s + next_start_s) / 2,
                     )
                 )
             continue

@@ -83,6 +83,10 @@ def tracking_condition(
         "split": split,
         "input_unit_ids": [value.input_unit_id for value in inputs],
     }
+    if input_mode is TrackingInputMode.CROPPED_INTERVALS:
+        # Cropped runs made before edge frames were kept stored a different set of
+        # predictions, so they must not be reused.
+        configuration["cropped_predictions"] = "target_with_edge_frames"
     return TrackingCondition(configuration, _digest(configuration))
 
 
@@ -408,14 +412,29 @@ def _deduplicate_predictions(
 
 
 def _restrict_to_target(prediction: pd.DataFrame, tracking_input: TrackingInput) -> pd.DataFrame:
-    """Keep padded-input predictions only inside the original requested interval."""
-    if tracking_input.target_start_s is None or tracking_input.target_end_s is None:
+    """Keep padded-input predictions inside the target interval plus one frame past each edge.
+
+    A tracker's frame grid starts at the crop, not the interval, so the first and last
+    gold frames of an interval usually fall between the last frame inside it and the
+    first frame outside it. Keeping that outside frame lets evaluation interpolate up
+    to the boundary. It is kept only short of the midpoint to a neighbouring interval
+    (``edge_limit_*``), so two crops never contribute frames to the same stretch.
+    """
+    start_s, end_s = tracking_input.target_start_s, tracking_input.target_end_s
+    if start_s is None or end_s is None:
         return prediction
     tolerance = 1e-9
-    return prediction.loc[
-        (prediction["time_s"] >= tracking_input.target_start_s - tolerance)
-        & (prediction["time_s"] <= tracking_input.target_end_s + tolerance)
-    ].copy()
+    times = prediction["time_s"]
+    keep = (times >= start_s - tolerance) & (times <= end_s + tolerance)
+    lower = tracking_input.edge_limit_start_s if tracking_input.edge_limit_start_s is not None else start_s
+    upper = tracking_input.edge_limit_end_s if tracking_input.edge_limit_end_s is not None else end_s
+    before = times.loc[(times >= lower - tolerance) & (times < start_s - tolerance)]
+    after = times.loc[(times > end_s + tolerance) & (times < upper - tolerance)]
+    if not before.empty:
+        keep |= times == before.max()
+    if not after.empty:
+        keep |= times == after.min()
+    return prediction.loc[keep].copy()
 
 
 def _stage_audio(audio_path: Path, unit_root: Path) -> Path:
