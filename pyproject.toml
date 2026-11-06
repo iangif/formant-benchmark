@@ -23,6 +23,9 @@ formant-benchmark = "formant_benchmark.cli.main:main"
 dev = [
     "pytest>=8.0",
 ]
+analysis = [
+    "matplotlib>=3.8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

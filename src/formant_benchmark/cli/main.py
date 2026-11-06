@@ -169,6 +169,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--overwrite", action="store_true", help="Replace an existing evaluation that used different settings."
     )
     experiment_run.add_argument("--fail-fast", action="store_true", help="Stop after the first item-level failure.")
+
+    report = subcommands.add_parser(
+        "report", help="Plot every evaluation into figures and a summary table (needs the 'analysis' extra)."
+    )
+    report.add_argument("--evaluations", type=Path, default=EVALUATIONS_ROOT, help="Evaluations directory.")
+    report.add_argument("--prepared", type=Path, default=PREPARED_ROOT, help="Prepared datasets directory.")
+    report.add_argument("--runs", type=Path, default=RUNS_ROOT, help="Prediction runs directory.")
+    report.add_argument("--output", type=Path, default=Path("reports"), help="Output directory (default: reports).")
+    report.add_argument(
+        "--format", action="append", dest="formats", help="Figure format, e.g. png or pdf; repeat (default: png and pdf)."
+    )
+    report.add_argument(
+        "--skip-positions",
+        action="store_true",
+        help="Skip the position-in-vowel figure, which re-aligns every prediction and takes longer.",
+    )
     return parser
 
 
@@ -323,6 +339,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 **inspect_evaluation_result(outcome.evaluation),
             }
             print(yaml.safe_dump(summary, sort_keys=False).rstrip())
+            return 0
+        if args.command == "report":
+            try:
+                from formant_benchmark.analysis.report import write_report
+            except ImportError as exc:
+                raise ConfigurationError(
+                    f"Plotting needs the 'analysis' extra ({exc}); run `uv sync --extra analysis`."
+                ) from exc
+            written = write_report(
+                evaluations_root=args.evaluations,
+                prepared_root=args.prepared,
+                runs_root=args.runs,
+                output=args.output,
+                formats=args.formats or ("png", "pdf"),
+                include_positions=not args.skip_positions,
+            )
+            print(yaml.safe_dump({"written": [str(path) for path in written]}, sort_keys=False).rstrip())
             return 0
     except FormantBenchmarkError as exc:
         print(f"error: {exc}", file=sys.stderr)

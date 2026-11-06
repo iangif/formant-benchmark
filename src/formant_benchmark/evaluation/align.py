@@ -31,28 +31,29 @@ def interpolate_formant(
     if not len(times):
         return result
 
-    for index, target in np.ndenumerate(targets):
-        insertion = int(np.searchsorted(times, target, side="left"))
-        exact_index: int | None = None
-        if insertion < len(times) and np.isclose(times[insertion], target, atol=_TIME_ATOL, rtol=0):
-            exact_index = insertion
-        elif insertion > 0 and np.isclose(times[insertion - 1], target, atol=_TIME_ATOL, rtol=0):
-            exact_index = insertion - 1
-        if exact_index is not None:
-            if np.isfinite(values[exact_index]):
-                result[index] = values[exact_index]
-            continue
+    # Vectorised over targets; each target follows the same rules independently.
+    insertion = np.searchsorted(times, targets, side="left")
+    right = np.minimum(insertion, len(times) - 1)
+    left = np.maximum(insertion - 1, 0)
+    exact_right = (insertion < len(times)) & np.isclose(times[right], targets, atol=_TIME_ATOL, rtol=0)
+    exact_left = ~exact_right & (insertion > 0) & np.isclose(times[left], targets, atol=_TIME_ATOL, rtol=0)
+    result[exact_right] = values[right][exact_right]
+    result[exact_left] = values[left][exact_left]
 
-        if insertion == 0 or insertion >= len(times):
-            continue
-        left = insertion - 1
-        right = insertion
-        if not (np.isfinite(values[left]) and np.isfinite(values[right])):
-            continue
-        if target < times[left] or target > times[right]:
-            continue
-        fraction = (target - times[left]) / (times[right] - times[left])
-        result[index] = values[left] + fraction * (values[right] - values[left])
+    between = (
+        ~exact_right
+        & ~exact_left
+        & (insertion > 0)
+        & (insertion < len(times))
+        & np.isfinite(values[left])
+        & np.isfinite(values[right])
+        & (targets >= times[left])
+        & (targets <= times[right])
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        fraction = (targets - times[left]) / (times[right] - times[left])
+        interpolated = values[left] + fraction * (values[right] - values[left])
+    result[between] = interpolated[between]
     return result
 
 

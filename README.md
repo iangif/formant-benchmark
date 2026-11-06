@@ -56,6 +56,7 @@ tracking again. See [docs/experiments.md](docs/experiments.md).
 | `formant-benchmark experiment run <name>` | Track and evaluate one experiment |
 | `formant-benchmark track ...` | One-off tracking run without an experiment file |
 | `formant-benchmark evaluate ...` | One-off evaluation of a run |
+| `formant-benchmark report` | Plot all evaluations into `reports/` (needs `uv sync --extra analysis`) |
 
 Add `--help` to any command for its options. For `track`, `evaluate`, tracker
 parameters and run outputs, see [docs/trackers/infrastructure.md](docs/trackers/infrastructure.md).
