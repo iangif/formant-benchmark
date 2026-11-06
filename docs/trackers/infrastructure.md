@@ -32,7 +32,7 @@ formant-benchmark track \
   --tracker synthetic \
   --input-mode cropped_intervals \
   --interval-type vowel \
-  --interval-padding 0.035 \
+  --interval-padding 0.025 \
   --split test \
   --parameter frame_step_s=0.01 \
   --output runs/synthetic-vtr-vowels

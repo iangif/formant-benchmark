@@ -16,14 +16,19 @@ cropped_intervals
 ```
 
 `full_item_with_intervals` is intentionally not advertised for FastTrackPy.
-For VTR-style utterance datasets, `cropped_intervals --interval-type vowel` is the
-natural vowel-only FastTrackPy condition. For datasets whose source-native item is
-already a vowel recording/token, `full_item` is usually appropriate.
+Use `cropped_intervals --interval-type vowel` whenever an item contains more than the
+vowel, including token clips cut from running speech. FastTrackPy chooses its formant
+ceiling and fits its smoothing over all the audio it is given, so surrounding speech
+degrades the vowel's track. On MCQLL clips, where the vowel is about 10% of the audio,
+whole-clip tracking raised its median F3 error from about 25 Hz to over 300 Hz.
+`full_item` is only appropriate when the item is the vowel itself.
 
 Short exact vowel crops can be too brief for FastTrackPy's internal Praat pitch or
 intensity analyses. The benchmark therefore supports generic cropped-input context via
-`--interval-padding`. A fixed value such as 25 ms supplies the tracker with surrounding
-audio while retaining only predictions from the original vowel interval. This changes
+`--interval-padding`. 25 ms, half of Praat's 50 ms analysis window at the default
+`window_length` of 0.025, gives frames at the vowel's edges a full window while
+retaining only predictions from the original vowel interval. More padding adds context
+that degrades FastTrackPy's estimates. This changes
 the tracking input condition without changing the later vowel evaluation scope.
 
 ## Parameters
@@ -86,7 +91,7 @@ uv run formant-benchmark track \
   --tracker-config configs/trackers/fasttrackpy.yaml \
   --input-mode cropped_intervals \
   --interval-type vowel \
-  --interval-padding 0.035 \
+  --interval-padding 0.025 \
   --output runs/fasttrackpy-vtr-vowels
 ```
 

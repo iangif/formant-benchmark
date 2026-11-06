@@ -61,6 +61,25 @@ and predicted values. Subgroup breakdowns, weighting, and plots are
 done from that table in R, pandas, or any other tool. `aggregate_metrics.parquet`
 holds only one overall row per region: the unweighted mean over evaluation units.
 
+`formant-benchmark report` turns every evaluation into figures and a summary table
+in `reports/` (install the plotting dependencies first with
+`uv sync --extra dev --extra analysis`). It covers F1-F3 only:
+
+| File | Shows |
+|---|---|
+| `heatmap_{mae,fdr,coverage}` | Mean metric for each tracker and dataset, one panel per formant |
+| `dots_mae` | Mean MAE per formant with 95% CIs from resampling speakers |
+| `ecdf_mae` | Distribution of per-unit MAE, which shows tails a mean hides |
+| `position_mae` | Mean absolute error by position in the vowel |
+| `vowel_space_<dataset>` | Gold F1/F2 vowel means with an arrow to each tracker's mean |
+| `summary.csv` | The numbers behind the figures |
+
+For the position figure, trajectory gold frames are re-aligned the same way the
+evaluator does it and put into 10% bins of the vowel. Hillenbrand keeps its own
+10%-80% points. This step reads `prepared/` and `runs/` and takes about a minute;
+`--skip-positions` leaves it out. The functions in `formant_benchmark.analysis`
+return the same tables for your own plots.
+
 ## Options
 
 ```text

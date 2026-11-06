@@ -94,6 +94,6 @@ uv run formant-benchmark track \
   --tracker-config configs/trackers/praat_burg.yaml \
   --input-mode cropped_intervals \
   --interval-type vowel \
-  --interval-padding 0.035 \
+  --interval-padding 0.025 \
   --output runs/praat-burg-vtr-vowels
 ```
