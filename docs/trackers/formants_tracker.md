@@ -29,7 +29,17 @@ cropped_intervals
 `full_item_with_intervals` is not advertised because the model does not consume gold
 interval boundaries itself. For VTR, `cropped_intervals --interval-type vowel` gives
 the model one vowel crop at a time. Generic `--interval-padding` may add acoustic
-context, and the benchmark trims persisted predictions back to the requested interval.
+context, and the benchmark trims persisted predictions back to the requested interval
+(plus one frame past each edge, see [infrastructure](infrastructure.md)).
+
+The model is a CNN over the whole input spectrogram, trained on full utterances, so
+unlike FastTrackPy it does better with more context, not less. On short vowel crops
+(around 60-100 ms with 25 ms padding) a few percent of vowels fail outright: all three
+formants come out far above gold (e.g. F2 near 4400 Hz) for the whole vowel. In the
+MCQLL French run this happened to 44 of 1465 vowels with cropped input, against 5 with
+the full clip, and it accounts for most of the difference in mean F2/F3 error between
+the two. Median error is about the same either way. The experiment configs therefore
+give FormantsTracker `full_item` input, while Praat and FastTrackPy get vowel crops.
 
 ## Persistent inference
 

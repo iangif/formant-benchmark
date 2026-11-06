@@ -27,7 +27,8 @@ Short exact vowel crops can be too brief for FastTrackPy's internal Praat pitch 
 intensity analyses. The benchmark therefore supports generic cropped-input context via
 `--interval-padding`. 25 ms, half of Praat's 50 ms analysis window at the default
 `window_length` of 0.025, gives frames at the vowel's edges a full window while
-retaining only predictions from the original vowel interval. More padding adds context
+retaining only predictions from the original vowel interval (plus one frame past each
+edge). More padding adds context
 that degrades FastTrackPy's estimates. This changes
 the tracking input condition without changing the later vowel evaluation scope.
 

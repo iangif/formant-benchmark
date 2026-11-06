@@ -39,7 +39,8 @@ cropped_intervals
 boundaries. Praat shrinks its analysis to fit very short sounds, so even very short
 vowel crops still return at least one frame. Frames near the edges of short crops are
 nevertheless analysed from little signal; `--interval-padding` supplies surrounding
-acoustic context while persisted predictions are trimmed back to the target interval.
+acoustic context while persisted predictions are trimmed back to the target interval
+(plus one frame past each edge, see [infrastructure](infrastructure.md)).
 
 ## Parameters
 

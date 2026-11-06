@@ -41,9 +41,14 @@ formant-benchmark track \
 `--interval-padding` adds the requested seconds of acoustic context on both sides of
 each cropped interval and is valid only with `cropped_intervals`. Padding is clamped
 at source-item boundaries. It changes the audio supplied to the tracker, but normalized
-predictions are trimmed back to the original target interval before persistence so
-padding cannot create overlapping duplicate item/time predictions. The resolved padding
-value is recorded in `run_manifest.yaml` and participates in resume compatibility.
+predictions are trimmed back to the original target interval before persistence, plus
+the one frame just outside each edge. A tracker's frames are spaced from the start of
+the crop, not the interval, so without those two frames the gold frames at the very
+start and end of the interval could not be interpolated and would count as missed.
+An edge frame is kept only if it lies short of the midpoint to the neighbouring
+interval in the same item, so two crops never supply frames for the same stretch of
+time. The resolved padding value is recorded in `run_manifest.yaml` and participates in
+resume compatibility.
 
 `cropped_intervals` requires real WAV files even for the synthetic tracker because the
 benchmark exercises and verifies the crop operation. Wrapper-relative times are converted
