@@ -15,7 +15,7 @@ tracker: praat_burg           # see: formant-benchmark tracker list
 tracking:
   input_mode: cropped_intervals   # full_item | cropped_intervals | full_item_with_intervals
   interval_type: vowel            # required for cropped/interval-aware input
-  interval_padding_s: 0.035       # context added around each crop (default: 0)
+  interval_padding_s: 0.025       # context added around each crop (default: 0)
   # split: test                   # default: all items
   # Tracker parameters; these override the tracker and dataset configs.
   # parameters:

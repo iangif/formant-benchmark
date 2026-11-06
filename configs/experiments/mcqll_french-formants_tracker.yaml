@@ -1,25 +1,19 @@
 # FormantsTracker on MCQLL GlobalPhone French (gp_fra) vowel tokens.
 #
-# Assumptions and caveats:
-# - Gold tracks are hand-corrected FastTrack candidates, which gives FastTrackPy a
-#     home advantage. Keep this in mind when comparing it with other trackers.
-# - Gold is the exporter's raw F1-F4, not the smoothed F1_s-F4_s columns.
-# - Each item is a short clip around one vowel token; only the vowel interval is
-#     evaluated.
-# - Batches are not splits: every batch copied into data/raw is used.
-# - Predicts F1-F3 only, so F4 is never evaluated for this tracker.
-# - device: auto uses a GPU when available; results can differ very slightly
-#     from a CPU run.
-# - Evaluation scores every formant present in both gold and predictions, so F4 is
-#     included where possible. For a like-for-like comparison across trackers,
-#     restrict the analysis to F1-F3.
-# - The whole vowel is scored (no central_region).
+# Notes:
+# - Gold tracks are hand-corrected FastTrack candidates, which may favour FastTrackPy.
+# - Each vowel is tracked as its own crop with 25 ms of context on each side: the
+#     half-window Praat and FastTrackPy need to analyse the vowel's edges. More
+#     context degrades FastTrackPy, which fits its ceiling and smoothing to all the
+#     audio it is given.
 
 dataset: mcqll_french
 tracker: formants_tracker
 
 tracking:
-  input_mode: full_item           # each item is one vowel token
+  input_mode: cropped_intervals
+  interval_type: vowel
+  interval_padding_s: 0.025
 
 evaluation:
   scope: vowels
