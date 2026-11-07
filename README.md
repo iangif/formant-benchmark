@@ -12,6 +12,11 @@ Built at the [Montréal Computational & Quantitative Linguistics Lab](https://mc
   <img alt="Pydantic" src="https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white">
 </p>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/pipeline-dark.svg">
+  <img alt="Pipeline: raw datasets pass through dataset adapters into prepared Parquet datasets. An experiment YAML pairs a dataset with a tracker wrapper. Tracking writes digest-keyed runs, the evaluator aligns predictions to gold and computes MAE, RMSE, FDR and coverage, and reports are generated from the evaluations." src="docs/media/pipeline-light.svg" width="100%">
+</picture>
+
 ## Design highlights
 
 - **Two plug-in points.** *Dataset adapters* turn each source format into one prepared schema: items, intervals, gold tracks, metadata and splits, stored as Parquet with a content fingerprint. *Tracker wrappers* run each tracker in its own environment and exchange data through a small JSON protocol. Everything in between is shared.
